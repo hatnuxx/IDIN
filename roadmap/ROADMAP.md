@@ -61,3 +61,7 @@ Status legend: ⏳ not started · 🔄 in progress · ✅ done
   tauri.conf.json in sync). Verified: 44 cargo tests, npm build, svelte-check,
   `tauri dev` smoke run (`Running target\debug\idin.exe`).
 - Release (if user asks): `GITHUB_TOKEN=<pat> python scripts/make_release.py v1.0.0`
+- ✅ v1.0.0 RELEASED: https://github.com/hatnuxx/IDIN/releases/tag/v1.0.0 —
+  assets: `IDIN_1.0.0_x64-setup.exe` (1.9 MB) + `IDIN_1.0.0_x64_en-US.msi` (2.9 MB),
+  Farsi release notes, tag on `main`. (Stale 0.3.0 bundle leftover cleaned up;
+  use `scripts/fix_release_assets.py` for idempotent asset maintenance.)
