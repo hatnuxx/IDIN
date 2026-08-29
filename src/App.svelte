@@ -4,6 +4,7 @@
   import { api } from '$lib/api';
   import BrowserSetup from '$lib/components/BrowserSetup.svelte';
   import SettingsPanel from '$lib/components/SettingsPanel.svelte';
+  import HistoryView from '$lib/components/HistoryView.svelte';
 
   let theme = $state('dark');
   let view = $state('downloads');
@@ -13,6 +14,18 @@
   let newUrl = $state('');
   let batchMode = $state(false);
   let errorMsg = $state('');
+
+  // ── Download list search & status filter ──
+  let searchQuery = $state('');
+  let statusFilter = $state('all'); // all | downloading | paused | queued | done | failed
+
+  const filteredTasks = $derived(
+    tasks.filter((tk) => {
+      if (statusFilter !== 'all' && tk.state !== statusFilter) return false;
+      if (!searchQuery) return true;
+      return tk.name.toLowerCase().includes(searchQuery.toLowerCase());
+    }),
+  );
 
   // ── Clipboard URL toast ──
   let clipUrl = $state(null); // URL offered from clipboard
@@ -237,8 +250,24 @@
     </header>
 
     {#if view === 'downloads' || view === 'queue'}
+      <div class="list-toolbar">
+        <input
+          type="search"
+          class="list-search"
+          placeholder="🔍 جستجوی دانلودها…"
+          bind:value={searchQuery}
+        />
+        <select bind:value={statusFilter} class="list-filter" aria-label="فیلتر وضعیت">
+          <option value="all">همه</option>
+          <option value="downloading">در حال دانلود</option>
+          <option value="queued">در صف</option>
+          <option value="paused">متوقف</option>
+          <option value="done">تمام‌شده</option>
+          <option value="failed">ناموفق</option>
+        </select>
+      </div>
       <div class="list">
-        {#each tasks as tk (tk.id)}
+        {#each filteredTasks as tk (tk.id)}
           <TaskRow
             task={tk}
             onpause={pause}
@@ -247,7 +276,7 @@
             onspeedlimit={speedLimit}
           />
         {/each}
-        {#if tasks.length === 0}
+        {#if filteredTasks.length === 0}
           <div class="empty">
             <div class="empty-icon">📥</div>
             <p>{t('empty.noDownloads') || 'دانلودی وجود ندارد'}</p>
@@ -255,6 +284,8 @@
           </div>
         {/if}
       </div>
+    {:else if view === 'history'}
+      <HistoryView />
     {:else if view === 'settings'}
       <SettingsPanel />
     {:else}
@@ -467,6 +498,18 @@
     transform: translateY(-1px);
   }
 
+  .list-toolbar {
+    display: flex;
+    gap: 8px;
+    padding: 10px 20px 0;
+    align-items: center;
+  }
+  .list-search {
+    flex: 1;
+  }
+  .list-filter {
+    max-width: 150px;
+  }
   .list {
     flex: 1;
     overflow-y: auto;

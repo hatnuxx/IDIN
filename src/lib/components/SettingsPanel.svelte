@@ -465,6 +465,28 @@
       </div>
     </section>
 
+    <!-- ══════════ Concurrency ══════════ -->
+    <section class="card">
+      <h2>⚙️ دانلود همزمان</h2>
+      <p class="hint">حداکثر تعداد دانلودهای همزمان (۰ = بدون محدودیت).</p>
+      <div class="post-action-row">
+        <input
+          type="number"
+          min="0"
+          max="32"
+          value={config.max_concurrent ?? 0}
+          onchange={(e) => {
+            const v = Math.max(0, Number(/** @type {HTMLInputElement} */ (e.target).value) || 0);
+            config.max_concurrent = v;
+            api.setMaxConcurrent(v);
+            saveMsg = t('settings.saved');
+            setTimeout(() => (saveMsg = ''), 2000);
+          }}
+          style="max-width: 120px"
+        />
+      </div>
+    </section>
+
     <!-- ══════════ Appearance ══════════ -->
     <section class="card">
       <h2>🎨 {t('settings.title') || 'تنظیمات ظاهری'}</h2>
