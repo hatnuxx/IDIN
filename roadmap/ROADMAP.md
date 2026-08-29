@@ -38,8 +38,8 @@ Status legend: ⏳ not started · 🔄 in progress · ✅ done
 - ✅ 3.11 UI: search/filter list, per-download details panel, speed graph, history view
 - ✅ 3.12 FTP: out of scope for reqwest (HTTP-only) — clear user-facing error for ftp:// URLs
 - ✅ 3.13 Jalali (Persian) calendar support in scheduler display & input
-- ⏳ 3.14 Documentation: `PROJECT_DOCUMENTATION.html` (Farsi, beginner-friendly)
-- ⏳ 3.15 Final verification: `cargo test` + `npm run build`
+- ✅ 3.14 Documentation: `PROJECT_DOCUMENTATION.html` (Farsi, beginner-friendly)
+- ✅ 3.15 Final verification: `cargo test` + `npm run build`
 
 ## Notes / decisions
 - Jalali conversion implemented as a pure-Rust module (`engine/jalali.rs`) with the
@@ -47,3 +47,17 @@ Status legend: ⏳ not started · 🔄 in progress · ✅ done
   crate and keeps the engine crate-dependency-free (engine must stay Tauri-free).
 - FTP: `reqwest` does not speak FTP; adding an FTP client crate for one protocol is
   disproportionate. Non-HTTP URLs now fail fast with a clear message.
+- 3.5/3.6: per-download HTTP options (headers/cookies/Basic Auth) flow through
+  `RequestOptions` into the probe and every segment worker; the global proxy is
+  swapped by rebuilding the shared client (RwLock) since reqwest clients are
+  immutable; a per-download proxy builds a dedicated client.
+- 3.8: duplicate resolution lives inside `engine.add` (auto/resume/overwrite/rename)
+  so batch + extension downloads get safe defaults; the UI asks via `check_duplicate`.
+- 3.9: work stealing shrinks the victim segment's `end` under the existing mutex
+  (live_end hook); no atomics or double bookkeeping, completion checks unchanged.
+- 3.10: `tauri-plugin-notification` v2 + `notification:default` capability; the
+  event forwarder fires language-neutral toasts (✓/✕ + filename).
+- All Phase 3 items complete. Version bumped 0.3.0 → 1.0.0 (Cargo.toml +
+  tauri.conf.json in sync). Verified: 44 cargo tests, npm build, svelte-check,
+  `tauri dev` smoke run (`Running target\debug\idin.exe`).
+- Release (if user asks): `GITHUB_TOKEN=<pat> python scripts/make_release.py v1.0.0`
