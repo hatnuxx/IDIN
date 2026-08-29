@@ -25,19 +25,19 @@ Status legend: ⏳ not started · 🔄 in progress · ✅ done
 - ✅ Browser extension + native messaging host + one-click setup
 
 ## Phase 3 — IDM feature upgrades (this release)
-- 🔄 3.1 Persist download state to disk (`downloads.json`) — resume after restart/crash
-- ⏳ 3.2 Download history log (`history.json`) with timestamps (done/failed/canceled)
-- ⏳ 3.3 Automatic retry on failure with configurable count + backoff
-- ⏳ 3.4 Concurrent download limit (configurable max simultaneous)
-- ⏳ 3.5 Custom HTTP headers, cookies, basic auth per download
-- ⏳ 3.6 Proxy support (HTTP/SOCKS, global setting)
-- ⏳ 3.7 File integrity verification (SHA-256 when provided)
+- ✅ 3.1 Persist download state to disk (`downloads.json`) — resume after restart/crash
+- ✅ 3.2 Download history log (`history.json`) with timestamps (done/failed/canceled)
+- ✅ 3.3 Automatic retry on failure with configurable count + backoff
+- ✅ 3.4 Concurrent download limit (configurable max simultaneous)
+- ✅ 3.5 Custom HTTP headers, cookies, basic auth per download
+- ✅ 3.6 Proxy support (HTTP/SOCKS, global setting)
+- ✅ 3.7 File integrity verification (SHA-256 when provided)
 - ⏳ 3.8 Duplicate download handling (same URL/file → resume/overwrite/rename)
 - ⏳ 3.9 Dynamic segment re-allocation (fast segments steal remaining bytes)
 - ⏳ 3.10 Desktop notifications (complete/failed)
-- ⏳ 3.11 UI: search/filter list, per-download details panel, speed graph, history view
-- ⏳ 3.12 FTP: out of scope for reqwest (HTTP-only) — clear user-facing error for ftp:// URLs
-- ⏳ 3.13 Jalali (Persian) calendar support in scheduler display & input
+- ✅ 3.11 UI: search/filter list, per-download details panel, speed graph, history view
+- ✅ 3.12 FTP: out of scope for reqwest (HTTP-only) — clear user-facing error for ftp:// URLs
+- ✅ 3.13 Jalali (Persian) calendar support in scheduler display & input
 - ⏳ 3.14 Documentation: `PROJECT_DOCUMENTATION.html` (Farsi, beginner-friendly)
 - ⏳ 3.15 Final verification: `cargo test` + `npm run build`
 

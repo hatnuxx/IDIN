@@ -43,6 +43,8 @@ pub fn run() {
             if let Some(state) = app.try_state::<commands::EngineState>() {
                 if let Ok(c) = shared_cfg.read() {
                     state.0.set_global_limit(c.global_speed_limit);
+                    // Restore the global proxy (if any) from the last run.
+                    let _ = state.0.set_global_proxy(&c.proxy_url);
                 }
             }
 
@@ -193,6 +195,7 @@ pub fn run() {
             commands::set_schedule,
             commands::set_post_action,
             commands::set_max_concurrent,
+            commands::set_proxy,
             // History commands
             commands::get_history,
             commands::clear_history,

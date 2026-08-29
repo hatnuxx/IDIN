@@ -13,7 +13,14 @@
     "batchPlaceholder": "Paste links here...\nhttps://example.com/file1.zip\nhttps://example.com/file2.mp4",
     "batchHint": "Links are detected automatically — you can paste the full text",
     "urlPlaceholder": "Enter a link — https://example.com/file.zip",
-    "demoNote": "(demo mode)"
+    "demoNote": "(demo mode)",
+    "advanced": "Advanced options",
+    "headersPlaceholder": "Referer: https://example.com/\nX-Token: abc123",
+    "headersHint": "HTTP headers — one \"Name: value\" per line",
+    "cookiesPlaceholder": "Cookies — sessionid=...; token=...",
+    "username": "Username (Basic Auth)",
+    "password": "Password",
+    "proxyPlaceholder": "Per-download proxy — socks5://127.0.0.1:1080 (empty = default)"
   },
   "nav": {
     "downloads": "Downloads",
@@ -72,7 +79,9 @@
     "error": "✕ Error: ",
     "scheduleClearedMsg": "✓ Schedule cleared",
     "scheduleSetMsg": "✓ Schedule set",
-    "unlimited": "Unlimited"
+    "unlimited": "Unlimited",
+    "proxy": "Proxy",
+    "proxyHint": "Global HTTP/SOCKS proxy for all downloads; empty = no proxy. Each download can also set its own proxy (in Advanced options)."
   },
   "empty": {
     "noDownloads": "No downloads yet",

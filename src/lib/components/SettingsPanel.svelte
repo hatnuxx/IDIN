@@ -153,6 +153,8 @@
         close_to_tray: true,
         scheduled_start: null,
         post_download_action: null,
+        max_concurrent: 0,
+        proxy_url: '',
       };
     }
     loading = false;
@@ -222,6 +224,17 @@
       saveMsg = t('settings.error') + String(e);
     }
     saving = false;
+  }
+
+  async function saveProxy() {
+    if (!config) return;
+    try {
+      await api.setProxy(config.proxy_url ?? '');
+      saveMsg = t('settings.saved');
+      setTimeout(() => (saveMsg = ''), 2000);
+    } catch (e) {
+      saveMsg = t('settings.error') + String(e);
+    }
   }
 
   function formatBytes(bps) {
@@ -462,6 +475,24 @@
           <option value="sleep">{t('settings.postActionSleep') || 'خواب (Sleep)'}</option>
           <option value="hibernate">{t('settings.postActionHibernate') || 'هیبرنیت'}</option>
         </select>
+      </div>
+    </section>
+
+    <!-- ══════════ Proxy ══════════ -->
+    <section class="card">
+      <h2>🌐 {t('settings.proxy') || 'پروکسی'}</h2>
+      <p class="hint">{t('settings.proxyHint') || ''}</p>
+      <div class="post-action-row">
+        <input
+          type="text"
+          class="schedule-input"
+          style="flex:1; direction:ltr"
+          placeholder="http://127.0.0.1:8080 یا socks5://127.0.0.1:1080"
+          bind:value={config.proxy_url}
+        />
+        <button class="btn-sm" onclick={saveProxy}>
+          {t('task.apply') || 'اعمال'}
+        </button>
       </div>
     </section>
 

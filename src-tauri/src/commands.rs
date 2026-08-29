@@ -1,7 +1,9 @@
 //! Tauri IPC commands — thin layer over the engine + config.
 
 use crate::config::{AppConfig, Category, ConfigState};
+use crate::engine::probe::RequestOptions;
 use crate::engine::{task::DownloadTask, Engine, EngineEvent};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::async_runtime;
@@ -72,22 +74,63 @@ pub fn get_downloads_stats(state: State<'_, EngineState>) -> DownloadStats {
 // ───────────────────────────── Download commands ─────────────────────────────
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn add_download(
     state: State<'_, EngineState>,
     config: State<'_, ConfigState>,
     url: String,
     destination: String,
     segments: Option<u32>,
+    headers: Option<HashMap<String, String>>,
+    cookies: Option<String>,
+    username: Option<String>,
+    password: Option<String>,
+    proxy: Option<String>,
 ) -> Result<u64, String> {
     let dest = if destination.is_empty() {
         config_download_dir(&config)
     } else {
         PathBuf::from(destination)
     };
+    let opts = build_request_options(headers, cookies, username, password);
     state
         .0
-        .add(url, dest, segments.unwrap_or(8), Some(config.0.clone()))
+        .add(
+            url,
+            dest,
+            segments.unwrap_or(8),
+            Some(config.0.clone()),
+            Some(opts),
+            proxy,
+        )
         .await
+}
+
+/// Assemble per-download HTTP options from optional IPC parameters.
+fn build_request_options(
+    headers: Option<HashMap<String, String>>,
+    cookies: Option<String>,
+    username: Option<String>,
+    password: Option<String>,
+) -> RequestOptions {
+    let mut opts = RequestOptions::default();
+    if let Some(h) = headers {
+        opts.headers = h
+            .into_iter()
+            .filter(|(k, _)| !k.trim().is_empty())
+            .collect();
+    }
+    if let Some(c) = cookies {
+        if !c.trim().is_empty() {
+            opts.cookies = Some(c);
+        }
+    }
+    if let Some(u) = username {
+        if !u.trim().is_empty() {
+            opts.basic_auth = Some((u, password.unwrap_or_default()));
+        }
+    }
+    opts
 }
 
 #[tauri::command]
@@ -116,6 +159,8 @@ pub async fn add_downloads(
                 dest.clone(),
                 segments.unwrap_or(8),
                 Some(config.0.clone()),
+                None,
+                None,
             )
             .await
         {
@@ -195,6 +240,8 @@ pub fn set_config(
 ) -> Result<(), String> {
     // Keep the engine's live global limit in sync with the saved config.
     engine.0.set_global_limit(new_cfg.global_speed_limit);
+    // Keep the engine's live proxy in sync as well (validates the URL).
+    engine.0.set_global_proxy(&new_cfg.proxy_url)?;
     // Save to config dir.
     let config_dir = dirs_config_dir();
     {
@@ -266,6 +313,24 @@ pub fn set_max_concurrent(
     let new_cfg = {
         let mut cfg = config.0.write().map_err(|e| e.to_string())?;
         cfg.max_concurrent = max;
+        cfg.clone()
+    };
+    crate::config::save(&config_dir, &new_cfg)
+}
+
+/// Set the global proxy (HTTP/SOCKS) and persist it. Empty string = no proxy.
+#[tauri::command]
+pub fn set_proxy(
+    engine: State<'_, EngineState>,
+    config: State<'_, ConfigState>,
+    proxy_url: String,
+) -> Result<(), String> {
+    // Validate by rebuilding the client first; only then persist.
+    engine.0.set_global_proxy(&proxy_url)?;
+    let config_dir = dirs_config_dir();
+    let new_cfg = {
+        let mut cfg = config.0.write().map_err(|e| e.to_string())?;
+        cfg.proxy_url = proxy_url;
         cfg.clone()
     };
     crate::config::save(&config_dir, &new_cfg)

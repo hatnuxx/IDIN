@@ -12,7 +12,7 @@ pub mod task;
 
 use crate::config::{self, SharedConfig};
 use events::ProgressEvent;
-use probe::probe;
+use probe::{probe, RequestOptions};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -26,13 +26,24 @@ pub type SharedClient = Arc<reqwest::Client>;
 
 /// Build the engine's shared HTTP client (rustls, streaming, redirects).
 pub fn build_client() -> SharedClient {
-    Arc::new(
-        reqwest::Client::builder()
-            .user_agent(concat!("IDIN/", env!("CARGO_PKG_VERSION")))
-            .redirect(reqwest::redirect::Policy::limited(10))
-            .build()
-            .expect("failed to build HTTP client"),
-    )
+    build_client_with_proxy("").expect("failed to build HTTP client")
+}
+
+/// Build the engine's HTTP client, optionally routed through a proxy.
+/// Supports `http://`, `https://` and `socks5://` proxy URLs (reqwest `socks`).
+pub fn build_client_with_proxy(proxy_url: &str) -> Result<SharedClient, String> {
+    let mut builder = reqwest::Client::builder()
+        .user_agent(concat!("IDIN/", env!("CARGO_PKG_VERSION")))
+        .redirect(reqwest::redirect::Policy::limited(10));
+    let proxy = proxy_url.trim();
+    if !proxy.is_empty() {
+        let p = reqwest::Proxy::all(proxy).map_err(|e| format!("invalid proxy URL: {e}"))?;
+        builder = builder.proxy(p);
+    }
+    builder
+        .build()
+        .map(Arc::new)
+        .map_err(|e| format!("failed to build HTTP client: {e}"))
 }
 
 /// Events the engine emits toward the app/UI.
@@ -68,7 +79,9 @@ struct Running {
 /// The download orchestrator: owns tasks, spawns segment workers,
 /// aggregates progress, supports pause/resume/remove.
 pub struct Engine {
-    client: SharedClient,
+    /// Shared HTTP client for all downloads. Wrapped in a RwLock so the
+    /// global proxy can be swapped at runtime (reqwest clients are immutable).
+    client: std::sync::RwLock<SharedClient>,
     next_id: AtomicU64,
     tasks: Arc<Mutex<HashMap<u64, DownloadTask>>>,
     running: Arc<Mutex<HashMap<u64, Running>>>,
@@ -93,7 +106,7 @@ pub const DEFAULT_RETRIES: u32 = 3;
 impl Engine {
     pub fn new(event_tx: mpsc::UnboundedSender<EngineEvent>) -> Arc<Self> {
         Arc::new(Self {
-            client: build_client(),
+            client: std::sync::RwLock::new(build_client()),
             next_id: AtomicU64::new(1),
             tasks: Arc::new(Mutex::new(HashMap::new())),
             running: Arc::new(Mutex::new(HashMap::new())),
@@ -116,6 +129,15 @@ impl Engine {
     pub fn set_max_concurrent(self: &Arc<Self>, n: u64) {
         self.max_concurrent.store(n, Ordering::Relaxed);
         self.pump_queue();
+    }
+
+    /// Swap the shared HTTP client to route through a global proxy.
+    /// An empty string removes the proxy. On an invalid URL the old client
+    /// is kept and an error is returned.
+    pub fn set_global_proxy(&self, proxy_url: &str) -> Result<(), String> {
+        let new_client = build_client_with_proxy(proxy_url)?;
+        *self.client.write().unwrap() = new_client;
+        Ok(())
     }
 
     fn persist_state(&self) {
@@ -189,15 +211,42 @@ impl Engine {
 
     /// Add a task; probes the URL and spawns segment workers.
     /// If `config` is provided, uses it for auto-categorization and download dir.
+    /// `options` carries per-download headers/cookies/basic auth; `proxy`
+    /// overrides the global proxy for this task alone.
     pub async fn add(
         self: &Arc<Self>,
         url: String,
         mut destination: PathBuf,
         segments_requested: u32,
         config: Option<SharedConfig>,
+        options: Option<RequestOptions>,
+        proxy: Option<String>,
     ) -> Result<u64, String> {
+        // Only HTTP(S) is supported — reqwest does not speak FTP or other
+        // schemes. Fail fast with a clear, user-facing message.
+        let lower = url.trim().to_ascii_lowercase();
+        if !(lower.starts_with("http://") || lower.starts_with("https://")) {
+            return Err(if lower.starts_with("ftp://") {
+                "FTP is not supported — IDIN downloads over HTTP/HTTPS only. \
+                 Please use an https:// link."
+                    .to_string()
+            } else {
+                format!("Unsupported URL scheme (HTTP/HTTPS only): {url}")
+            });
+        }
+
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let p = probe(&self.client, &url).await?;
+
+        // Merge cookies into the header map (the task model stores one map).
+        let mut opts = options.unwrap_or_default();
+        if let Some(c) = opts.cookies.take() {
+            if !c.is_empty() {
+                opts.headers.insert("Cookie".into(), c);
+            }
+        }
+
+        let client = self.client.read().unwrap().clone();
+        let p = probe(&client, &url, &opts).await?;
 
         let name = p
             .filename
@@ -265,6 +314,9 @@ impl Engine {
             task.state = state;
             task.segments = n_segments as u32;
             task.category = category;
+            task.headers = opts.headers.clone();
+            task.basic_auth = opts.basic_auth.clone();
+            task.proxy = proxy.filter(|s| !s.trim().is_empty());
             tasks.insert(id, task);
         }
         // Add to ordering list.
@@ -298,6 +350,33 @@ impl Engine {
                 t.segments as u64,
             )
         };
+
+        // Effective HTTP client: a per-download proxy overrides the global one.
+        let client = {
+            let task_proxy = self
+                .tasks
+                .lock()
+                .unwrap()
+                .get(&id)
+                .and_then(|t| t.proxy.clone())
+                .filter(|p| !p.trim().is_empty());
+            match task_proxy {
+                Some(p) => build_client_with_proxy(&p)?,
+                None => self.client.read().unwrap().clone(),
+            }
+        };
+        // Per-download headers / basic auth (stored on the task at add time).
+        let opts = self
+            .tasks
+            .lock()
+            .unwrap()
+            .get(&id)
+            .map(|t| RequestOptions {
+                headers: t.headers.clone(),
+                cookies: None,
+                basic_auth: t.basic_auth.clone(),
+            })
+            .unwrap_or_default();
 
         // Preallocate the file so segment workers can write at offsets.
         let file = std::fs::OpenOptions::new()
@@ -339,7 +418,7 @@ impl Engine {
             }
         };
 
-        self.spawn_segments(id, &url, dest, seg_states);
+        self.spawn_segments(id, &url, dest, seg_states, client, opts);
         Ok(())
     }
 
@@ -349,12 +428,15 @@ impl Engine {
         url: &str,
         destination: PathBuf,
         seg_states: Vec<Arc<Mutex<SegmentState>>>,
+        client: SharedClient,
+        opts: RequestOptions,
     ) {
         let mut handles = Vec::new();
         let engine = Arc::new(self.clone());
 
         for seg in seg_states.clone() {
-            let client = self.client.clone();
+            let client = client.clone();
+            let opts = opts.clone();
             let url = url.to_string();
             let dest = destination.clone();
             let (s, e) = {
@@ -407,7 +489,7 @@ impl Engine {
                 // Unknown-size tasks stream the whole body over a single
                 // plain (non-Range) connection and finish the task themselves.
                 let result = if unknown_size {
-                    segment::download_plain(&client2, &url2, &mut file, &mut on_chunk).await
+                    segment::download_plain(&client2, &url2, &mut file, &mut on_chunk, &opts).await
                 } else if task_limit > 0 {
                     // If there's a speed limit, wrap the download with throttling.
                     segment::download_segment_throttled(
@@ -418,10 +500,20 @@ impl Engine {
                         &mut file,
                         &mut on_chunk,
                         task_limit,
+                        &opts,
                     )
                     .await
                 } else {
-                    segment::download_segment(&client2, &url2, s, e, &mut file, &mut on_chunk).await
+                    segment::download_segment(
+                        &client2,
+                        &url2,
+                        s,
+                        e,
+                        &mut file,
+                        &mut on_chunk,
+                        &opts,
+                    )
+                    .await
                 };
 
                 match result {
@@ -866,6 +958,60 @@ mod tests {
             split_ranges(100, 4),
             vec![(0, 24), (25, 49), (50, 74), (75, 99)]
         );
+    }
+
+    #[tokio::test]
+    async fn add_rejects_ftp_with_clear_error() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let engine = Engine::new(tx);
+        let err = engine
+            .add(
+                "ftp://example.com/file.zip".into(),
+                PathBuf::from("f"),
+                1,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap_err();
+        assert!(err.contains("FTP"), "unexpected error: {err}");
+    }
+
+    #[tokio::test]
+    async fn add_rejects_non_http_schemes() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let engine = Engine::new(tx);
+        let err = engine
+            .add(
+                "file:///C:/Windows/calc.exe".into(),
+                PathBuf::from("f"),
+                1,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap_err();
+        assert!(err.contains("Unsupported URL scheme"), "got: {err}");
+    }
+
+    #[test]
+    fn client_with_proxy_builds_or_rejects() {
+        assert!(build_client_with_proxy("").is_ok());
+        assert!(build_client_with_proxy("http://127.0.0.1:8080").is_ok());
+        assert!(build_client_with_proxy("socks5://127.0.0.1:1080").is_ok());
+        assert!(build_client_with_proxy(":::not-a-url:::").is_err());
+    }
+
+    #[test]
+    fn global_proxy_swap_validates_url() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let engine = Engine::new(tx);
+        assert!(engine.set_global_proxy("http://127.0.0.1:8080").is_ok());
+        assert!(engine.set_global_proxy(":::bad:::").is_err());
+        // Clearing the proxy works.
+        assert!(engine.set_global_proxy("").is_ok());
     }
 
     #[test]

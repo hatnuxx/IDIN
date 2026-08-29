@@ -1,5 +1,6 @@
 //! HTTP Range segment worker: downloads one byte range to a writer.
 
+use crate::engine::probe::RequestOptions;
 use crate::engine::SharedClient;
 use std::io::{Seek, SeekFrom, Write};
 
@@ -12,13 +13,14 @@ pub async fn download_segment<W>(
     end: u64,
     file: &mut W,
     on_chunk: &mut (dyn FnMut(u64) + Send),
+    opts: &RequestOptions,
 ) -> Result<u64, String>
 where
     W: Write + Seek + Send,
 {
     let range = format!("bytes={start}-{end}");
-    let mut resp = client
-        .get(url)
+    let mut resp = opts
+        .apply(client.get(url))
         .header(reqwest::header::RANGE, range)
         .send()
         .await
@@ -57,13 +59,14 @@ pub async fn download_segment_throttled<W>(
     file: &mut W,
     on_chunk: &mut (dyn FnMut(u64) + Send),
     bytes_per_sec: u64,
+    opts: &RequestOptions,
 ) -> Result<u64, String>
 where
     W: Write + Seek + Send,
 {
     let range = format!("bytes={start}-{end}");
-    let mut resp = client
-        .get(url)
+    let mut resp = opts
+        .apply(client.get(url))
         .header(reqwest::header::RANGE, range)
         .send()
         .await
@@ -127,12 +130,13 @@ pub async fn download_plain<W>(
     url: &str,
     file: &mut W,
     on_chunk: &mut (dyn FnMut(u64) + Send),
+    opts: &RequestOptions,
 ) -> Result<u64, String>
 where
     W: Write + Send,
 {
-    let mut resp = client
-        .get(url)
+    let mut resp = opts
+        .apply(client.get(url))
         .send()
         .await
         .map_err(|e| format!("request failed: {e}"))?;
@@ -201,9 +205,17 @@ mod tests {
 
         let mut out: Vec<u8> = vec![0; payload.len()];
         let mut cursor = std_io::Cursor::new(&mut out);
-        let total = download_segment(&client, &url, 100, 1123, &mut cursor, &mut |_| {})
-            .await
-            .unwrap();
+        let total = download_segment(
+            &client,
+            &url,
+            100,
+            1123,
+            &mut cursor,
+            &mut |_| {},
+            &RequestOptions::default(),
+        )
+        .await
+        .unwrap();
         assert_eq!(total, 1024);
         assert_eq!(&out[100..=1123], &payload[100..=1123]);
     }
@@ -241,9 +253,15 @@ mod tests {
         let url = format!("http://{addr}/file.bin");
 
         let mut out: Vec<u8> = Vec::new();
-        let total = download_plain(&client, &url, &mut out, &mut |_| {})
-            .await
-            .unwrap();
+        let total = download_plain(
+            &client,
+            &url,
+            &mut out,
+            &mut |_| {},
+            &RequestOptions::default(),
+        )
+        .await
+        .unwrap();
         assert_eq!(total as usize, payload.len());
         assert_eq!(out, payload);
     }

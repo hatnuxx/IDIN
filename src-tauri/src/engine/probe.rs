@@ -2,6 +2,50 @@
 
 use crate::engine::SharedClient;
 use reqwest::Method;
+use std::collections::HashMap;
+
+/// Per-download HTTP options: extra headers, cookies, basic auth.
+///
+/// These are applied to *every* request made for a task (the probe and all
+/// segment workers), so authenticated / cookie-gated downloads work end to end.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RequestOptions {
+    /// Extra HTTP headers (e.g. `Referer`, custom tokens).
+    pub headers: HashMap<String, String>,
+    /// Cookie string sent as the `Cookie` header (applied after `headers`).
+    pub cookies: Option<String>,
+    /// Basic-auth credentials (user, password) sent as `Authorization`.
+    pub basic_auth: Option<(String, String)>,
+}
+
+impl RequestOptions {
+    /// True when nothing was configured (avoids touching the request).
+    pub fn is_empty(&self) -> bool {
+        self.headers.is_empty() && self.cookies.is_none() && self.basic_auth.is_none()
+    }
+
+    /// Apply these options onto a request builder. Invalid header names or
+    /// values are skipped silently instead of failing the whole download.
+    pub fn apply(&self, mut rb: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        for (k, v) in &self.headers {
+            if let (Ok(name), Ok(val)) = (
+                reqwest::header::HeaderName::from_bytes(k.as_bytes()),
+                reqwest::header::HeaderValue::from_str(v),
+            ) {
+                rb = rb.header(name, val);
+            }
+        }
+        if let Some(c) = &self.cookies {
+            if !c.is_empty() {
+                rb = rb.header(reqwest::header::COOKIE, c.clone());
+            }
+        }
+        if let Some((u, p)) = &self.basic_auth {
+            rb = rb.basic_auth(u, Some(p));
+        }
+        rb
+    }
+}
 
 /// What we learn about a URL before downloading.
 #[derive(Debug, Clone)]
@@ -14,9 +58,13 @@ pub struct ProbeResult {
 }
 
 /// Probe a URL with a HEAD request, falling back to a ranged GET.
-pub async fn probe(client: &SharedClient, url: &str) -> Result<ProbeResult, String> {
-    let head = client
-        .request(Method::HEAD, url)
+pub async fn probe(
+    client: &SharedClient,
+    url: &str,
+    opts: &RequestOptions,
+) -> Result<ProbeResult, String> {
+    let head = opts
+        .apply(client.request(Method::HEAD, url))
         .send()
         .await
         .map_err(|e| format!("HEAD failed: {e}"))?;
@@ -131,5 +179,23 @@ mod tests {
     fn percent_decode_basic() {
         assert_eq!(percent_decode("a%20b%2Fc"), "a b/c");
         assert_eq!(percent_decode("plain"), "plain");
+    }
+
+    #[test]
+    fn request_options_default_is_empty_and_apply_is_safe() {
+        let o = RequestOptions::default();
+        assert!(o.is_empty());
+
+        let mut o = RequestOptions::default();
+        o.headers.insert("X-Test".into(), "1".into());
+        o.cookies = Some("a=b; c=d".into());
+        o.basic_auth = Some(("user".into(), "pass".into()));
+        assert!(!o.is_empty());
+
+        // apply() must not panic, even with an invalid header name present.
+        o.headers
+            .insert("bad header name with spaces".into(), "x".into());
+        let client = reqwest::Client::new();
+        let _ = o.apply(client.get("http://example.com/"));
     }
 }

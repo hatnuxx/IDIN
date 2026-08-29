@@ -53,12 +53,30 @@ export interface Progress {
   speed_bps: number;
 }
 
+/** Per-download HTTP options: headers, cookies, basic auth, proxy override. */
+export interface DownloadOptions {
+  headers?: Record<string, string>;
+  cookies?: string;
+  username?: string;
+  password?: string;
+  proxy?: string;
+}
+
 // ──────────────────────────── API ────────────────────────────
 
 export const api = {
   // ── Downloads ──
-  addDownload: (url: string, destination = '', segments = 8) =>
-    invoke<number>('add_download', { url, destination, segments }),
+  addDownload: (url: string, destination = '', segments = 8, options?: DownloadOptions) =>
+    invoke<number>('add_download', {
+      url,
+      destination,
+      segments,
+      headers: options?.headers ?? null,
+      cookies: options?.cookies ?? null,
+      username: options?.username ?? null,
+      password: options?.password ?? null,
+      proxy: options?.proxy ?? null,
+    }),
   addDownloads: (urls: string[], destination = '', segments = 8) =>
     invoke<number[]>('add_downloads', { urls, destination, segments }),
   pause: (id: number) => invoke<void>('pause_download', { id }),
@@ -81,6 +99,7 @@ export const api = {
   setSchedule: (timestamp: number | null) => invoke<void>('set_schedule', { timestamp }),
   setPostAction: (action: string | null) => invoke<void>('set_post_action', { action }),
   setMaxConcurrent: (max: number) => invoke<void>('set_max_concurrent', { max }),
+  setProxy: (proxyUrl: string) => invoke<void>('set_proxy', { proxyUrl }),
 
   // ── History ──
   getHistory: () => invoke<HistoryEntry[]>('get_history'),

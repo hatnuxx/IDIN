@@ -28,3 +28,9 @@ Thumbs.db
 # Local env & secrets
 .env
 *.pfx                          # code-signing certificates
+
+# Local handoff file (contains secrets - never commit)
+HANDOFF.md
+
+# Local build/test logs
+*.log

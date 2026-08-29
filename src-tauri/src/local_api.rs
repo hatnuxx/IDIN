@@ -113,7 +113,7 @@ pub async fn serve(engine: Arc<Engine>) {
             tokio::spawn(async move {
                 // Extension doesn't have access to Tauri config state,
                 // so pass None — downloads go to the default directory.
-                if let Err(e) = eng.add(url, default_dir(), 8, None).await {
+                if let Err(e) = eng.add(url, default_dir(), 8, None, None, None).await {
                     log::warn!("extension download failed: {e}");
                 }
             });

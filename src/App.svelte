@@ -108,6 +108,54 @@
   }
 
   // ── Add dialog ──
+  // Advanced per-download options (headers / cookies / basic auth / proxy).
+  let showAdvanced = $state(false);
+  let advHeaders = $state(''); // one "Name: value" per line
+  let advCookies = $state('');
+  let advUser = $state('');
+  let advPass = $state('');
+  let advProxy = $state('');
+
+  /** Parse "Name: value" lines into a header map. */
+  function parseHeaders(text) {
+    const map = /** @type {Record<string, string>} */ ({});
+    for (const line of text.split('\n')) {
+      const s = line.trim();
+      if (!s) continue;
+      const i = s.indexOf(':');
+      if (i > 0) map[s.slice(0, i).trim()] = s.slice(i + 1).trim();
+    }
+    return map;
+  }
+
+  /** Collect advanced fields; null when everything is empty. */
+  function collectOptions() {
+    const headers = parseHeaders(advHeaders);
+    const hasAny =
+      Object.keys(headers).length > 0 ||
+      advCookies.trim() ||
+      advUser.trim() ||
+      advPass.trim() ||
+      advProxy.trim();
+    if (!hasAny) return null;
+    return {
+      headers: Object.keys(headers).length ? headers : undefined,
+      cookies: advCookies.trim() || undefined,
+      username: advUser.trim() || undefined,
+      password: advPass || undefined,
+      proxy: advProxy.trim() || undefined,
+    };
+  }
+
+  function resetAdvanced() {
+    showAdvanced = false;
+    advHeaders = '';
+    advCookies = '';
+    advUser = '';
+    advPass = '';
+    advProxy = '';
+  }
+
   async function addDownload() {
     errorMsg = '';
     const raw = newUrl.trim();
@@ -117,6 +165,7 @@
     }
 
     try {
+      const options = collectOptions();
       if (batchMode) {
         // In batch mode, auto-detect URLs from each line (may contain extra text)
         const detected = extractUrls(raw);
@@ -132,7 +181,7 @@
           return;
         }
         if (urls.length === 1) {
-          await api.addDownload(urls[0], '', 8);
+          await api.addDownload(urls[0], '', 8, options ?? undefined);
         } else {
           // Multiple links pasted into single-line field → switch to batch
           await api.addDownloads(urls, '', 8);
@@ -141,6 +190,7 @@
       newUrl = '';
       showAdd = false;
       batchMode = false;
+      resetAdvanced();
       refresh();
     } catch (e) {
       errorMsg = String(e);
@@ -171,6 +221,7 @@
       refresh();
     } catch (e) {
       errorMsg = String(e);
+      showAdd = true;
     }
   }
   async function resume(id) {
@@ -344,6 +395,36 @@
           oninput={onUrlInput}
           onkeydown={(e) => e.key === 'Enter' && addDownload()}
         />
+      {/if}
+
+      <button class="ghost adv-toggle" onclick={() => (showAdvanced = !showAdvanced)}>
+        {showAdvanced ? '▾' : '▸'} {t('app.advanced')}
+      </button>
+      {#if showAdvanced}
+        <div class="adv-fields">
+          <textarea
+            class="batch-input"
+            rows="2"
+            placeholder={t('app.headersPlaceholder')}
+            bind:value={advHeaders}></textarea>
+          <p class="hint">{t('app.headersHint')}</p>
+          <input
+            type="text"
+            class="adv-input"
+            placeholder={t('app.cookiesPlaceholder')}
+            bind:value={advCookies}
+          />
+          <div class="adv-row">
+            <input type="text" class="adv-input" placeholder={t('app.username')} bind:value={advUser} />
+            <input type="password" class="adv-input" placeholder={t('app.password')} bind:value={advPass} />
+          </div>
+          <input
+            type="text"
+            class="adv-input"
+            placeholder={t('app.proxyPlaceholder')}
+            bind:value={advProxy}
+          />
+        </div>
       {/if}
 
       {#if errorMsg}<p class="error">{errorMsg}</p>{/if}
@@ -632,6 +713,25 @@
     color: var(--danger);
     font-size: 12px;
     margin-top: 8px;
+  }
+
+  /* ═══════════ Advanced download options ═══════════ */
+  .adv-toggle {
+    margin-top: 10px;
+    font-size: 12px;
+  }
+  .adv-fields {
+    margin-top: 6px;
+  }
+  .adv-row {
+    display: flex;
+    gap: 8px;
+  }
+  .adv-row .adv-input {
+    flex: 1;
+  }
+  .adv-input {
+    margin: 8px 0 0;
   }
 
   /* ═══════════ Clipboard toast ═══════════ */

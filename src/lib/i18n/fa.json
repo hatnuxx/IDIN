@@ -13,7 +13,14 @@
     "batchPlaceholder": "لینک‌ها را بچسبانید...\nhttps://example.com/file1.zip\nhttps://example.com/file2.mp4",
     "batchHint": "لینک‌ها خودکار تشخیص داده می‌شوند — می‌توانید متن کامل را بچسبانید",
     "urlPlaceholder": "لینک را وارد کنید — https://example.com/file.zip",
-    "demoNote": "(حالت دمو)"
+    "demoNote": "(حالت دمو)",
+    "advanced": "تنظیمات پیشرفته",
+    "headersPlaceholder": "Referer: https://example.com/\nX-Token: abc123",
+    "headersHint": "هدرهای HTTP — هر خط یک مورد به شکل «نام: مقدار»",
+    "cookiesPlaceholder": "کوکی‌ها — sessionid=...; token=...",
+    "username": "نام کاربری (Basic Auth)",
+    "password": "رمز عبور",
+    "proxyPlaceholder": "پروکسی اختصاصی — socks5://127.0.0.1:1080 (خالی = پیش‌فرض)"
   },
   "nav": {
     "downloads": "دانلودها",
@@ -72,7 +79,9 @@
     "error": "✕ خطا: ",
     "scheduleClearedMsg": "✓ زمان‌بندی پاک شد",
     "scheduleSetMsg": "✓ زمان‌بندی ثبت شد",
-    "unlimited": "نامحدود"
+    "unlimited": "نامحدود",
+    "proxy": "پروکسی",
+    "proxyHint": "پروکسی سراسری HTTP/SOCKS برای همه دانلودها؛ خالی = بدون پروکسی. هر دانلود هم می‌تواند پروکسی جداگانه داشته باشد (در «تنظیمات پیشرفته»)."
   },
   "empty": {
     "noDownloads": "دانلودی وجود ندارد",
