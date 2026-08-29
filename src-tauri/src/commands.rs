@@ -52,7 +52,10 @@ pub struct DownloadStats {
 pub fn get_downloads_stats(state: State<'_, EngineState>) -> DownloadStats {
     let tasks = state.0.list();
     DownloadStats {
-        active: tasks.iter().filter(|t| t.state == crate::engine::task::TaskState::Downloading).count(),
+        active: tasks
+            .iter()
+            .filter(|t| t.state == crate::engine::task::TaskState::Downloading)
+            .count(),
         active_speed: tasks
             .iter()
             .filter(|t| t.state == crate::engine::task::TaskState::Downloading)
@@ -228,10 +231,7 @@ pub fn set_download_dir(config: State<'_, ConfigState>, path: String) -> Result<
 }
 
 #[tauri::command]
-pub fn set_schedule(
-    config: State<'_, ConfigState>,
-    timestamp: Option<u64>,
-) -> Result<(), String> {
+pub fn set_schedule(config: State<'_, ConfigState>, timestamp: Option<u64>) -> Result<(), String> {
     let config_dir = dirs_config_dir();
     let new_cfg = {
         let mut cfg = config.0.write().map_err(|e| e.to_string())?;

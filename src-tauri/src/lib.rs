@@ -204,7 +204,13 @@ fn execute_post_action(action: &str) {
         "shutdown" => {
             // shutdown /s /t 60 → 60 second warning so user can cancel
             let _ = std::process::Command::new("shutdown")
-                .args(["/s", "/t", "60", "/c", "IDIN: All downloads complete. Shutting down..."])
+                .args([
+                    "/s",
+                    "/t",
+                    "60",
+                    "/c",
+                    "IDIN: All downloads complete. Shutting down...",
+                ])
                 .spawn();
         }
         "sleep" => {

@@ -50,9 +50,31 @@ pub struct DownloadTask {
     /// The category folder this file was sorted into (e.g. "Videos").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
+    /// True while the task waits for a scheduled start time.
+    #[serde(default)]
+    pub scheduled: bool,
+    /// How many automatic retry attempts have been used so far.
+    #[serde(default)]
+    pub retries_used: u32,
+    /// Extra HTTP headers to send with every request for this download.
+    #[serde(default)]
+    pub headers: std::collections::HashMap<String, String>,
+    /// Optional basic-auth credentials (user, password).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub basic_auth: Option<(String, String)>,
+    /// Optional SHA-256 the finished file must match (hex, lowercase).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_sha256: Option<String>,
+    /// Optional per-download proxy URL (http:// or socks5://); overrides global.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proxy: Option<String>,
+    /// Unix timestamp when the task was added.
+    #[serde(default)]
+    pub created_at: u64,
 }
 
 impl DownloadTask {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(id: u64, url: impl Into<String>, destination: PathBuf) -> Self {
         Self {
             id,
@@ -67,6 +89,16 @@ impl DownloadTask {
             speed_limit: 0,
             last_speed: 0,
             category: None,
+            scheduled: false,
+            retries_used: 0,
+            headers: std::collections::HashMap::new(),
+            basic_auth: None,
+            expected_sha256: None,
+            proxy: None,
+            created_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0),
         }
     }
 

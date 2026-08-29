@@ -4,6 +4,8 @@
 //! testable with plain `cargo test`.
 
 pub mod events;
+pub mod jalali;
+pub mod persist;
 pub mod probe;
 pub mod segment;
 pub mod task;
@@ -37,7 +39,10 @@ pub fn build_client() -> SharedClient {
 #[derive(Debug, Clone)]
 pub enum EngineEvent {
     Progress(ProgressEvent),
-    StateChanged { task_id: u64, state: TaskState },
+    StateChanged {
+        task_id: u64,
+        state: TaskState,
+    },
     /// All downloads finished (Done or Failed). Backend can trigger post-action.
     AllFinished,
 }
@@ -178,23 +183,12 @@ impl Engine {
 
         {
             let mut tasks = self.tasks.lock().unwrap();
-            tasks.insert(
-                id,
-                DownloadTask {
-                    id,
-                    url: p.final_url.clone(),
-                    destination: destination.clone(),
-                    total_bytes: total,
-                    downloaded_bytes: 0,
-                    state,
-                    segments: n_segments as u32,
-                    last_error: None,
-                    priority: 0,
-                    speed_limit: 0,
-                    last_speed: 0,
-                    category,
-                },
-            );
+            let mut task = DownloadTask::new(id, p.final_url.clone(), destination.clone());
+            task.total_bytes = total;
+            task.state = state;
+            task.segments = n_segments as u32;
+            task.category = category;
+            tasks.insert(id, task);
         }
         // Add to ordering list.
         self.order.lock().unwrap().push(id);
@@ -309,7 +303,10 @@ impl Engine {
             } else {
                 self.global_limit.load(Ordering::Relaxed)
             };
-            let unknown_size = { let g = seg.lock().unwrap(); g.end == u64::MAX };
+            let unknown_size = {
+                let g = seg.lock().unwrap();
+                g.end == u64::MAX
+            };
 
             handles.push(tokio::spawn(async move {
                 // Each segment opens its own file handle (ranged writes).
@@ -492,9 +489,9 @@ impl Engine {
         if tasks.is_empty() {
             return;
         }
-        let all_done = tasks.values().all(|t| {
-            matches!(t.state, TaskState::Done | TaskState::Failed)
-        });
+        let all_done = tasks
+            .values()
+            .all(|t| matches!(t.state, TaskState::Done | TaskState::Failed));
         if all_done {
             self.emit(EngineEvent::AllFinished);
         }

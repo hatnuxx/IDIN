@@ -25,8 +25,7 @@ fn api_token_path() -> Option<PathBuf> {
         return Some(base.join("IDIN").join("api_token"));
     }
     // Non-Windows fallback.
-    std::env::var_os("HOME")
-        .map(|h| PathBuf::from(h).join(".idin").join("api_token"))
+    std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".idin").join("api_token"))
 }
 
 /// Load or create the shared API token.
@@ -148,4 +147,3 @@ mod tests {
         assert!(!is_valid_url("https://example.com/\n{bad}"));
     }
 }
-
