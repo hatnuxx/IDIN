@@ -18,11 +18,33 @@ with open(os.path.join(os.path.dirname(__file__), "..", "src-tauri", "tauri.conf
     VERSION = json.load(f)["version"]
 TAG = sys.argv[1] if len(sys.argv) > 1 else f"v{VERSION}"
 
+RELEASE_NOTES = """## IDIN v1.0.0 — نسخه اول دانلودمنیجر مدرن و سبک 🏛
+
+### ✨ فیچرهای جدید در نسخه v1
+- 🧾 **هدرهای HTTP، کوکی و Basic Auth اختصاصی** به‌ازای هر دانلود (تنظیمات پیشرفته در دیالوگ افزودن)
+- 🌐 **پروکسی HTTP/SOCKS5** — سراسری + اختصاصی هر دانلود
+- ♊ **مدیریت دانلود تکراری** — ادامه / رونویسی / نام جدید با پرسش از کاربر
+- ⚡ **تخصیص پویای سگمنت‌ها** — سگمنت‌های سریع، باقی‌مانده سگمنت کند را می‌قاپند
+- 🔔 **اعلان دسکتاپ** برای اتمام یا شکست دانلود
+- 🔁 تلاش مجدد خودکار با backoff · 🔒 بررسی SHA-256 · 🕘 تاریخچه با جستجو و تاریخ جلالی
+- 📅 زمان‌بندی با **تقویم جلالی** + خاموش‌کردن/خواب/هیبرنیت پس از دانلود
+- 🧩 اکستنشن مرورگر با نصب خودکار · 📋 مانیتور کلیپ‌بورد · 🐢 محدودیت سرعت (سراسری و هر دانلود)
+- 🚫 خطای شفاف برای لینک‌های FTP (پشتیبانی نمی‌شود)
+
+### 📦 نصب
+فایل `*-setup.exe` را دانلود و اجرا کنید.
+
+> **Unsigned build** — در SmartScreen روی **More info → Run anyway** کلیک کنید.
+
+### ✅ کیفیت
+۴۴ تست Rust (شامل تست‌های شبکه با سرور محلی واقعی) + svelte-check بدون خطا.
+"""
+
 body = {
     "tag_name": TAG,
     "target_commitish": "main",
     "name": f"IDIN {TAG}",
-    "body": "See commit history for changes.\n\n> Unsigned build — click **More info → Run anyway** in SmartScreen.",
+    "body": RELEASE_NOTES,
     "draft": False,
     "prerelease": False,
 }
