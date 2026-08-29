@@ -10,7 +10,7 @@
 //! on `i32` already truncate, so the operators are used directly.
 
 /// A Gregorian calendar date.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GregorianDate {
     pub year: i32,
     /// 1 = January .. 12 = December
@@ -19,7 +19,7 @@ pub struct GregorianDate {
 }
 
 /// A Jalali (Solar Hijri) calendar date.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct JalaliDate {
     pub year: i32,
     /// 1 = Farvardin .. 12 = Esfand

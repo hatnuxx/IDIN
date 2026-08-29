@@ -17,6 +17,18 @@ export interface AppConfig {
   close_to_tray: boolean;
   scheduled_start: number | null;
   post_download_action: string | null;
+  max_concurrent: number;
+  proxy_url: string;
+}
+
+export interface HistoryEntry {
+  id: number;
+  url: string;
+  filename: string;
+  outcome: 'done' | 'failed' | 'canceled';
+  total_bytes: number | null;
+  finished_at: number;
+  last_error: string | null;
 }
 
 export interface Task {
@@ -68,6 +80,17 @@ export const api = {
   // ── Schedule & Post-action ──
   setSchedule: (timestamp: number | null) => invoke<void>('set_schedule', { timestamp }),
   setPostAction: (action: string | null) => invoke<void>('set_post_action', { action }),
+  setMaxConcurrent: (max: number) => invoke<void>('set_max_concurrent', { max }),
+
+  // ── History ──
+  getHistory: () => invoke<HistoryEntry[]>('get_history'),
+  clearHistory: () => invoke<void>('clear_history'),
+
+  // ── Jalali calendar helpers ──
+  gregorianToJalali: (gy: number, gm: number, gd: number) =>
+    invoke<{ year: number; month: number; day: number }>('gregorian_to_jalali_cmd', { gy, gm, gd }),
+  jalaliToGregorian: (jy: number, jm: number, jd: number) =>
+    invoke<{ year: number; month: number; day: number }>('jalali_to_gregorian_cmd', { jy, jm, jd }),
 
   // ── Browser ──
   setupBrowser: (extensionId: string) => invoke('setup_browser_integration', { extensionId }),

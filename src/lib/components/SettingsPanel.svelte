@@ -17,6 +17,130 @@
   let scheduleInput = $state(''); // datetime-local value
   let postAction = $state('none');
 
+  // ── Jalali (Solar Hijri) scheduler state ──
+  const jalaliMonths = [
+    'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
+    'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند',
+  ];
+  const jalaliMonthsEn = [
+    'Farvardin', 'Ordibehesht', 'Khordad', 'Tir', 'Mordad', 'Shahrivar',
+    'Mehr', 'Aban', 'Azar', 'Dey', 'Bahman', 'Esfand',
+  ];
+  let jalaliYear = $state(1405);
+  let jalaliMonth = $state(1);
+  let jalaliDay = $state(1);
+  let jalaliPreview = $state('');
+  let jalaliHour = $state(8);
+  let jalaliMinute = $state(0);
+
+  /** Convert a unix timestamp to a human-readable Jalali string. */
+  function jalaliOf(ts) {
+    // Synchronous conversion using the well-known jalaali algorithm
+    // (mirrors the Rust engine module; kept in JS for instant display).
+    const d = new Date(ts * 1000);
+    return gregorianToJalaliStr(d.getFullYear(), d.getMonth() + 1, d.getDate()) +
+      ` ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+
+  function div(a, b) { return Math.trunc(a / b); }
+  function mod(a, b) { return a - b * Math.floor(a / b); }
+
+  function jalCal(jy) {
+    const breaks = [-61, 9, 38, 199, 426, 686, 756, 818, 1111, 1181, 1210, 1635, 2060, 2097, 2192, 2262, 2324, 2394, 2456, 3178];
+    const gy = jy + 621;
+    let leapJ = -14;
+    let jp = breaks[0];
+    let jump = 0;
+    for (let i = 1; i < breaks.length; i++) {
+      const jm = breaks[i];
+      jump = jm - jp;
+      if (jy < jm) break;
+      leapJ += div(jump, 33) * 8 + div(mod(jump, 33), 4);
+      jp = jm;
+    }
+    let n = jy - jp;
+    leapJ += div(n, 33) * 8 + div(mod(n, 33) + 3, 4);
+    if (mod(jump, 33) === 4 && jump - n === 4) leapJ += 1;
+    const leapG = div(gy, 4) - div((div(gy, 100) + 1) * 3, 4) - 150;
+    const march = 20 + leapJ - leapG;
+    if (jump - n < 6) n = n - jump + div(jump + 4, 33) * 33;
+    let leap = mod(mod(n + 1, 33) - 1, 4);
+    if (leap === -1) leap = 4;
+    return { leap, gy, march };
+  }
+
+  function g2d(gy, gm, gd) {
+    let d = div((gy + div(gm - 8, 6) + 100100) * 1461, 4) + div(153 * mod(gm + 9, 12) + 2, 5) + gd - 34840408;
+    d = d - div(div(gy + 100100 + div(gm - 8, 6), 100) * 3, 4) + 752;
+    return d;
+  }
+
+  function d2g(jdn) {
+    let j = 4 * jdn + 139361631;
+    j = j + div(div(4 * jdn + 183187720, 146097) * 3, 4) * 4 - 3908;
+    const i = div(mod(j, 1461), 4) * 5 + 308;
+    const gd = div(mod(i, 153), 5) + 1;
+    const gm = mod(div(i, 153), 12) + 1;
+    const gy = div(j, 1461) - 100100 + div(8 - gm, 6);
+    return { gy, gm, gd };
+  }
+
+  function jalaliMonthLength(jy, jm) {
+    if (jm <= 6) return 31;
+    if (jm <= 11) return 30;
+    return jalCal(jy).leap === 0 ? 30 : 29;
+  }
+
+  function j2d(jy, jm, jd) {
+    const r = jalCal(jy);
+    return g2d(r.gy, 3, r.march) + (jm - 1) * 31 - div(jm, 7) * (jm - 7) + jd - 1;
+  }
+
+  function d2j(jdn) {
+    const gy = d2g(jdn).gy;
+    let jy = Math.min(gy - 621, 3177);
+    const r = jalCal(jy);
+    let k = jdn - g2d(r.gy, 3, r.march);
+    if (k >= 0) {
+      if (k <= 185) return { jy, jm: 1 + div(k, 31), jd: mod(k, 31) + 1 };
+      k -= 186;
+    } else {
+      jy -= 1;
+      k += 179;
+      if (r.leap === 1) k += 1;
+    }
+    return { jy, jm: 7 + div(k, 30), jd: mod(k, 30) + 1 };
+  }
+
+  function gregorianToJalaliStr(gy, gm, gd) {
+    const j = d2j(g2d(gy, gm, gd));
+    return `${j.jd} ${jalaliMonths[j.jm - 1]} ${j.jy}`;
+  }
+
+  /** Apply the Jalali date fields → schedule timestamp. */
+  async function setScheduleJalali() {
+    const jy = Number(jalaliYear), jm = Number(jalaliMonth), jd = Number(jalaliDay);
+    if (!jy || !jm || !jd || jd > jalaliMonthLength(jy, jm)) {
+      jalaliPreview = 'تاریخ نامعتبر است.';
+      return;
+    }
+    const g = d2g(j2d(jy, jm, jd));
+    // Build a local datetime at the chosen hour/minute.
+    const dt = new Date(g.gy, g.gm - 1, g.gd, Number(jalaliHour) || 0, Number(jalaliMinute) || 0);
+    const ts = Math.floor(dt.getTime() / 1000);
+    const pad = (n) => String(n).padStart(2, '0');
+    scheduleInput = `${g.gy}-${pad(g.gm)}-${pad(g.gd)}T${pad(jalaliHour)}:${pad(jalaliMinute)}`;
+    jalaliPreview = `${jd} ${jalaliMonths[jm - 1]} ${jy} ≈ ${g.gy}-${pad(g.gm)}-${pad(g.gd)}`;
+    try {
+      await api.setSchedule(ts);
+      if (config) config.scheduled_start = ts;
+      saveMsg = t('settings.scheduleSetMsg');
+      setTimeout(() => (saveMsg = ''), 2000);
+    } catch (e) {
+      saveMsg = t('settings.error') + String(e);
+    }
+  }
+
   // Load config on mount
   async function loadConfig() {
     try {
@@ -284,11 +408,44 @@
         {/if}
       </div>
 
+      <!-- Jalali date entry: pick a Solar Hijri date, converts to the field above -->
+      <div class="schedule-row jalali-row">
+        <span class="hint">📅 تقویم جلالی:</span>
+        <select bind:value={jalaliMonth} class="schedule-input jalali-month" aria-label="ماه جلالی">
+          {#each jalaliMonths as m, i}
+            <option value={i + 1}>{m}</option>
+          {/each}
+        </select>
+        <input
+          type="number"
+          min="1"
+          max="31"
+          bind:value={jalaliDay}
+          class="schedule-input jalali-day"
+          aria-label="روز جلالی"
+          placeholder="روز"
+        />
+        <input
+          type="number"
+          min="1300"
+          max="1500"
+          bind:value={jalaliYear}
+          class="schedule-input jalali-year"
+          aria-label="سال جلالی"
+          placeholder="سال"
+        />
+        <button class="btn-sm" onclick={setScheduleJalali}>اعمال تاریخ جلالی</button>
+      </div>
+      {#if jalaliPreview}
+        <p class="hint">≈ {jalaliPreview}</p>
+      {/if}
+
       {#if config.scheduled_start}
         <p class="current-speed">
           ✅ {t('settings.scheduleCurrent')}: {new Date(
             config.scheduled_start * 1000,
           ).toLocaleString()}
+          <span class="hint">({jalaliOf(config.scheduled_start)})</span>
         </p>
       {/if}
     </section>

@@ -283,6 +283,20 @@ pub fn clear_history() -> Result<(), String> {
     crate::engine::persist::save_history(&dirs_config_dir(), &[])
 }
 
+// ───────────────────────────── Jalali calendar commands ─────────────────────────────
+
+/// Jalali date → Gregorian.
+#[tauri::command]
+pub fn jalali_to_gregorian_cmd(jy: i32, jm: u32, jd: u32) -> crate::engine::jalali::GregorianDate {
+    crate::engine::jalali::jalali_to_gregorian(jy, jm, jd)
+}
+
+/// Gregorian date → Jalali.
+#[tauri::command]
+pub fn gregorian_to_jalali_cmd(gy: i32, gm: u32, gd: u32) -> crate::engine::jalali::JalaliDate {
+    crate::engine::jalali::gregorian_to_jalali(gy, gm, gd)
+}
+
 // ───────────────────────────── Helpers ─────────────────────────────
 
 fn config_download_dir(config: &State<'_, ConfigState>) -> PathBuf {

@@ -196,6 +196,9 @@ pub fn run() {
             // History commands
             commands::get_history,
             commands::clear_history,
+            // Jalali calendar commands
+            commands::jalali_to_gregorian_cmd,
+            commands::gregorian_to_jalali_cmd,
             // Tray commands
             commands::show_window_cmd,
             commands::quit_app,
