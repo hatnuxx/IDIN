@@ -107,6 +107,34 @@
     return urls.map((u) => u.replace(/[),.;!?]+$/, ''));
   }
 
+  // ── Duplicate download dialog (3.8) ──
+  let showDup = $state(false);
+  let dupInfo = $state(null); // DuplicateInfo from check_duplicate
+  let pendingUrl = $state('');
+  let pendingOptions = $state(null);
+
+  async function resolveDuplicate(action) {
+    const url = pendingUrl;
+    showDup = false;
+    try {
+      await api.addDownload(url, '', 8, pendingOptions ?? undefined, action);
+      refresh();
+    } catch (e) {
+      errorMsg = String(e);
+      showAdd = true;
+    }
+    pendingUrl = '';
+    pendingOptions = null;
+    dupInfo = null;
+  }
+
+  function cancelDuplicate() {
+    showDup = false;
+    pendingUrl = '';
+    pendingOptions = null;
+    dupInfo = null;
+  }
+
   // ── Add dialog ──
   // Advanced per-download options (headers / cookies / basic auth / proxy).
   let showAdvanced = $state(false);
@@ -181,6 +209,20 @@
           return;
         }
         if (urls.length === 1) {
+          // Ask the user what to do when the URL/file already exists.
+          let info = null;
+          try {
+            info = await api.checkDuplicate(urls[0], '');
+          } catch {
+            /* check unavailable → fall back to engine auto-handling */
+          }
+          if (info?.duplicate) {
+            pendingUrl = urls[0];
+            pendingOptions = options;
+            dupInfo = info;
+            showDup = true;
+            return;
+          }
           await api.addDownload(urls[0], '', 8, options ?? undefined);
         } else {
           // Multiple links pasted into single-line field → switch to batch
@@ -437,6 +479,38 @@
           }}>{t('toolbar.clear')}</button
         >
         <button class="primary" onclick={addDownload}>{t('toolbar.add')}</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- ═══════════ Duplicate download dialog (3.8) ═══════════ -->
+{#if showDup && dupInfo}
+  <div class="overlay" role="dialog" aria-modal="true">
+    <div class="dialog">
+      <div class="dialog-header">
+        <h3>⚠ {t('dup.title')}</h3>
+        <button class="btn-toast-ghost" onclick={cancelDuplicate}>✕</button>
+      </div>
+      <p class="dup-msg">
+        {dupInfo.kind === 'url' ? t('dup.urlExists') : t('dup.fileExists')}
+      </p>
+      {#if dupInfo.path}
+        <p class="dup-path">{dupInfo.path}</p>
+      {/if}
+      <div class="dialog-actions">
+        <button class="ghost" onclick={cancelDuplicate}>{t('dup.cancel')}</button>
+        <button class="ghost" onclick={() => resolveDuplicate('rename')}
+          >{t('dup.rename')}</button
+        >
+        <button class="ghost" onclick={() => resolveDuplicate('overwrite')}
+          >{t('dup.overwrite')}</button
+        >
+        {#if dupInfo.kind === 'url'}
+          <button class="primary" onclick={() => resolveDuplicate('resume')}
+            >{t('dup.resume')}</button
+          >
+        {/if}
       </div>
     </div>
   </div>
@@ -712,6 +786,25 @@
   .error {
     color: var(--danger);
     font-size: 12px;
+    margin-top: 8px;
+  }
+
+  /* ═══════════ Duplicate download dialog ═══════════ */
+  .dup-msg {
+    font-size: 13px;
+    color: var(--text-2);
+    margin-top: 4px;
+  }
+  .dup-path {
+    font-size: 12px;
+    color: var(--text-3);
+    direction: ltr;
+    text-align: start;
+    word-break: break-all;
+    background: var(--bg-hover);
+    border: 1px solid var(--stroke);
+    border-radius: 8px;
+    padding: 8px 10px;
     margin-top: 8px;
   }
 

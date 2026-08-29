@@ -176,6 +176,7 @@ pub fn run() {
             // Download commands
             commands::add_download,
             commands::add_downloads,
+            commands::check_duplicate,
             commands::pause_download,
             commands::resume_download,
             commands::remove_download,

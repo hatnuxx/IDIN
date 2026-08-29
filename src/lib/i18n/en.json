@@ -22,6 +22,15 @@
     "password": "Password",
     "proxyPlaceholder": "Per-download proxy — socks5://127.0.0.1:1080 (empty = default)"
   },
+  "dup": {
+    "title": "This download already exists",
+    "urlExists": "This link is already in your download list. Resume it, or start over?",
+    "fileExists": "A file with the same name already exists on disk. What should IDIN do?",
+    "resume": "Resume",
+    "overwrite": "Overwrite (start over)",
+    "rename": "Rename (1, 2, …)",
+    "cancel": "Cancel"
+  },
   "nav": {
     "downloads": "Downloads",
     "queue": "Queue",

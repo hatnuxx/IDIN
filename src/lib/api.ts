@@ -66,7 +66,13 @@ export interface DownloadOptions {
 
 export const api = {
   // ── Downloads ──
-  addDownload: (url: string, destination = '', segments = 8, options?: DownloadOptions) =>
+  addDownload: (
+    url: string,
+    destination = '',
+    segments = 8,
+    options?: DownloadOptions,
+    duplicateAction?: string,
+  ) =>
     invoke<number>('add_download', {
       url,
       destination,
@@ -76,7 +82,16 @@ export const api = {
       username: options?.username ?? null,
       password: options?.password ?? null,
       proxy: options?.proxy ?? null,
+      duplicateAction: duplicateAction ?? null,
     }),
+  checkDuplicate: (url: string, destination = '') =>
+    invoke<{
+      duplicate: boolean;
+      kind: 'none' | 'url' | 'file';
+      existing_task_id: number | null;
+      existing_state: string | null;
+      path: string | null;
+    }>('check_duplicate', { url, destination }),
   addDownloads: (urls: string[], destination = '', segments = 8) =>
     invoke<number[]>('add_downloads', { urls, destination, segments }),
   pause: (id: number) => invoke<void>('pause_download', { id }),

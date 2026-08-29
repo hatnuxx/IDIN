@@ -221,6 +221,7 @@ impl Engine {
         config: Option<SharedConfig>,
         options: Option<RequestOptions>,
         proxy: Option<String>,
+        duplicate_action: Option<String>,
     ) -> Result<u64, String> {
         // Only HTTP(S) is supported — reqwest does not speak FTP or other
         // schemes. Fail fast with a clear, user-facing message.
@@ -279,7 +280,7 @@ impl Engine {
         };
 
         // Append category sub-folder if matched.
-        let destination = if destination.is_dir() || destination.extension().is_none() {
+        let mut destination = if destination.is_dir() || destination.extension().is_none() {
             let mut base = destination;
             if let Some(ref cat) = category {
                 base = base.join(cat);
@@ -292,6 +293,63 @@ impl Engine {
         // Ensure parent directory exists.
         if let Some(parent) = destination.parent() {
             let _ = std::fs::create_dir_all(parent);
+        }
+
+        // ── Duplicate handling: same URL tracked, or file already on disk ──
+        let action = DuplicateAction::parse(duplicate_action.as_deref());
+        {
+            let matches: Vec<(u64, TaskState)> = {
+                let tasks = self.tasks.lock().unwrap();
+                tasks
+                    .values()
+                    .filter(|t| t.url == url || t.url == p.final_url)
+                    .map(|t| (t.id, t.state))
+                    .collect()
+            };
+            if !matches.is_empty() {
+                match action {
+                    DuplicateAction::Overwrite => {
+                        // Drop every old task with this URL; the fresh
+                        // download takes over the path.
+                        for (rid, _) in matches {
+                            self.remove(rid);
+                        }
+                    }
+                    DuplicateAction::Resume => {
+                        // Continue the first paused/queued task, if any.
+                        let resumable = matches
+                            .iter()
+                            .find(|(_, st)| matches!(st, TaskState::Paused | TaskState::Queued));
+                        match resumable {
+                            Some(&(rid, _)) => {
+                                self.resume(rid)?;
+                                return Ok(rid);
+                            }
+                            // Already active/done: just surface it again.
+                            None => return Ok(matches[0].0),
+                        }
+                    }
+                    DuplicateAction::Rename | DuplicateAction::Auto => {
+                        destination = alternate_destination(&destination);
+                    }
+                }
+            } else if destination.exists() {
+                match action {
+                    DuplicateAction::Overwrite => {
+                        std::fs::remove_file(&destination)
+                            .map_err(|e| format!("cannot overwrite file: {e}"))?;
+                    }
+                    DuplicateAction::Rename | DuplicateAction::Auto => {
+                        destination = alternate_destination(&destination);
+                    }
+                    // Nothing tracked to resume; download fresh over the file.
+                    DuplicateAction::Resume => {}
+                }
+            }
+            // Ensure the (possibly renamed) parent still exists.
+            if let Some(parent) = destination.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
         }
 
         let total = p.total_bytes;
@@ -921,6 +979,56 @@ impl Engine {
     }
 }
 
+/// What to do when a new download collides with an existing task or file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DuplicateAction {
+    /// Sensible defaults: resume a paused same-URL task, otherwise rename.
+    Auto,
+    /// Continue an existing paused/queued task with the same URL.
+    Resume,
+    /// Discard the old task/file and download from scratch.
+    Overwrite,
+    /// Save under a new name (`file (1).zip`).
+    Rename,
+}
+
+impl DuplicateAction {
+    /// Parse the user-facing action string (empty/None → Auto).
+    pub fn parse(s: Option<&str>) -> Self {
+        match s.map(str::trim).filter(|s| !s.is_empty()) {
+            Some("resume") => Self::Resume,
+            Some("overwrite") => Self::Overwrite,
+            Some("rename") => Self::Rename,
+            _ => Self::Auto,
+        }
+    }
+}
+
+/// Find a free path next to `dest` by inserting " (n)" before the extension.
+pub fn alternate_destination(dest: &Path) -> PathBuf {
+    let parent = dest.parent().unwrap_or_else(|| Path::new("."));
+    let stem = dest
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "download".into());
+    let ext = dest
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default();
+    for n in 1..1000u32 {
+        let candidate = parent.join(format!("{stem} ({n}){ext}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    // Extremely long queue of same-named files: fall back to a timestamp.
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    parent.join(format!("{stem} ({ts}){ext}"))
+}
+
 /// Split `0..=total-1` into `n` near-equal inclusive ranges.
 pub fn split_ranges(total: u64, n: u64) -> Vec<(u64, u64)> {
     if total == 0 {
@@ -938,7 +1046,8 @@ pub fn split_ranges(total: u64, n: u64) -> Vec<(u64, u64)> {
     out
 }
 
-fn filename_from_url(url: &str) -> String {
+/// Best-effort filename from a URL path (query string stripped).
+pub fn filename_from_url(url: &str) -> String {
     url.split('?')
         .next()
         .unwrap_or(url)
@@ -972,6 +1081,7 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
             )
             .await
             .unwrap_err();
@@ -987,6 +1097,7 @@ mod tests {
                 "file:///C:/Windows/calc.exe".into(),
                 PathBuf::from("f"),
                 1,
+                None,
                 None,
                 None,
                 None,
@@ -1015,6 +1126,157 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_action_parses_strings() {
+        assert_eq!(DuplicateAction::parse(None), DuplicateAction::Auto);
+        assert_eq!(DuplicateAction::parse(Some("")), DuplicateAction::Auto);
+        assert_eq!(
+            DuplicateAction::parse(Some("resume")),
+            DuplicateAction::Resume
+        );
+        assert_eq!(
+            DuplicateAction::parse(Some(" overwrite ")),
+            DuplicateAction::Overwrite
+        );
+        assert_eq!(
+            DuplicateAction::parse(Some("rename")),
+            DuplicateAction::Rename
+        );
+        assert_eq!(DuplicateAction::parse(Some("junk")), DuplicateAction::Auto);
+    }
+
+    #[test]
+    fn alternate_destination_picks_free_name() {
+        let dir = std::env::temp_dir().join(format!("idin_dup_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let dest = dir.join("file.zip");
+        assert_eq!(alternate_destination(&dest), dir.join("file (1).zip"));
+
+        std::fs::write(&dest, b"x").unwrap();
+        let a1 = alternate_destination(&dest);
+        assert_eq!(a1, dir.join("file (1).zip"));
+        std::fs::write(&a1, b"x").unwrap();
+        assert_eq!(alternate_destination(&dest), dir.join("file (2).zip"));
+
+        // Extension-less files also work.
+        let bare = dir.join("README");
+        std::fs::write(&bare, b"x").unwrap();
+        assert_eq!(alternate_destination(&bare), dir.join("README (1)"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn add_auto_renames_when_file_exists() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let payload: Vec<u8> = (0..=255u8).cycle().take(16 * 1024).collect();
+
+        let server_payload = payload.clone();
+        tokio::spawn(async move {
+            loop {
+                let Ok((sock, _)) = listener.accept().await else {
+                    break;
+                };
+                let p = server_payload.clone();
+                tokio::spawn(async move {
+                    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                    let mut sock = sock;
+                    let mut buf = vec![0u8; 4096];
+                    let n = sock.read(&mut buf).await.unwrap_or(0);
+                    let req = String::from_utf8_lossy(&buf[..n]);
+                    let resp = if req.starts_with("HEAD") {
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n",
+                            p.len()
+                        )
+                    } else if let Some(r) = extract_range(&req) {
+                        let body = &p[r.0 as usize..=r.1 as usize];
+                        format!(
+                            "HTTP/1.1 206 Partial Content\r\nContent-Length: {}\r\nContent-Range: bytes {}-{}/{}\r\nConnection: close\r\n\r\n",
+                            body.len(), r.0, r.1, p.len()
+                        )
+                    } else {
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            p.len()
+                        )
+                    };
+                    let _ = sock.write_all(resp.as_bytes()).await;
+                    let body: &[u8] = if req.starts_with("HEAD") {
+                        &[]
+                    } else if let Some(r) = extract_range(&req) {
+                        &p[r.0 as usize..=r.1 as usize]
+                    } else {
+                        &p
+                    };
+                    let _ = sock.write_all(body).await;
+                });
+            }
+        });
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let engine = Engine::new(tx);
+        let dir = std::env::temp_dir().join(format!("idin_dup_add_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+
+        let url = format!("http://{addr}/payload.bin");
+        let id1 = engine
+            .add(url.clone(), dir.clone(), 1, None, None, None, None)
+            .await
+            .unwrap();
+        let dest1 = engine
+            .tasks
+            .lock()
+            .unwrap()
+            .get(&id1)
+            .unwrap()
+            .destination
+            .clone();
+
+        // Second add with the same URL and no explicit action → auto-rename.
+        let id2 = engine
+            .add(url, dir.clone(), 1, None, None, None, None)
+            .await
+            .unwrap();
+        let dest2 = engine
+            .tasks
+            .lock()
+            .unwrap()
+            .get(&id2)
+            .unwrap()
+            .destination
+            .clone();
+        assert_ne!(id1, id2);
+        assert_ne!(dest1, dest2);
+        assert!(dest2.to_string_lossy().contains("payload (1).bin"));
+
+        // Overwrite collapses onto the same path.
+        let id3 = engine
+            .add(
+                format!("http://{addr}/payload.bin"),
+                dir.clone(),
+                1,
+                None,
+                None,
+                None,
+                Some("overwrite".into()),
+            )
+            .await
+            .unwrap();
+        let dest3 = engine
+            .tasks
+            .lock()
+            .unwrap()
+            .get(&id3)
+            .unwrap()
+            .destination
+            .clone();
+        assert_eq!(dest3, dest1);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn split_ranges_uneven() {
         let r = split_ranges(10, 4);
         assert_eq!(r.len(), 4);
@@ -1028,6 +1290,16 @@ mod tests {
     #[test]
     fn split_ranges_more_chunks_than_bytes() {
         assert_eq!(split_ranges(2, 8).len(), 2);
+    }
+
+    /// Extract a `bytes=a-b` Range header value from a raw HTTP request.
+    fn extract_range(req: &str) -> Option<(u64, u64)> {
+        let line = req
+            .lines()
+            .find(|l| l.to_ascii_lowercase().starts_with("range:"))?;
+        let spec = line.split_once(':')?.1.trim().strip_prefix("bytes=")?;
+        let (a, b) = spec.split_once('-')?;
+        Some((a.parse().ok()?, b.parse().ok()?))
     }
 
     #[test]

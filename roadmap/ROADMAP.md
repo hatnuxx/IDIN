@@ -32,7 +32,7 @@ Status legend: ⏳ not started · 🔄 in progress · ✅ done
 - ✅ 3.5 Custom HTTP headers, cookies, basic auth per download
 - ✅ 3.6 Proxy support (HTTP/SOCKS, global setting)
 - ✅ 3.7 File integrity verification (SHA-256 when provided)
-- ⏳ 3.8 Duplicate download handling (same URL/file → resume/overwrite/rename)
+- ✅ 3.8 Duplicate download handling (same URL/file → resume/overwrite/rename)
 - ⏳ 3.9 Dynamic segment re-allocation (fast segments steal remaining bytes)
 - ⏳ 3.10 Desktop notifications (complete/failed)
 - ✅ 3.11 UI: search/filter list, per-download details panel, speed graph, history view

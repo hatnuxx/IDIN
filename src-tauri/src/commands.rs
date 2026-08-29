@@ -86,6 +86,7 @@ pub async fn add_download(
     username: Option<String>,
     password: Option<String>,
     proxy: Option<String>,
+    duplicate_action: Option<String>,
 ) -> Result<u64, String> {
     let dest = if destination.is_empty() {
         config_download_dir(&config)
@@ -102,8 +103,66 @@ pub async fn add_download(
             Some(config.0.clone()),
             Some(opts),
             proxy,
+            duplicate_action,
         )
         .await
+}
+
+/// What the UI learns before adding a download that may already exist.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DuplicateInfo {
+    pub duplicate: bool,
+    /// "url" — the URL is already tracked as a task; "file" — a file with the
+    /// same name is already on disk; "none" — no collision.
+    pub kind: String,
+    pub existing_task_id: Option<u64>,
+    pub existing_state: Option<String>,
+    pub path: Option<String>,
+}
+
+/// Check whether a URL would collide with an existing task or file.
+/// The UI calls this *before* `add_download` to ask the user what to do.
+#[tauri::command]
+pub fn check_duplicate(
+    state: State<'_, EngineState>,
+    config: State<'_, ConfigState>,
+    url: String,
+    destination: String,
+) -> DuplicateInfo {
+    let none = DuplicateInfo {
+        duplicate: false,
+        kind: "none".into(),
+        existing_task_id: None,
+        existing_state: None,
+        path: None,
+    };
+    // Same URL already tracked?
+    if let Some(t) = state.0.list().iter().find(|t| t.url == url) {
+        return DuplicateInfo {
+            duplicate: true,
+            kind: "url".into(),
+            existing_task_id: Some(t.id),
+            existing_state: Some(format!("{:?}", t.state).to_lowercase()),
+            path: Some(t.destination.display().to_string()),
+        };
+    }
+    // A file with the probable name already on disk?
+    let dir = if destination.is_empty() {
+        config_download_dir(&config)
+    } else {
+        PathBuf::from(destination)
+    };
+    let path = dir.join(crate::engine::filename_from_url(&url));
+    if path.exists() {
+        return DuplicateInfo {
+            duplicate: true,
+            kind: "file".into(),
+            existing_task_id: None,
+            existing_state: None,
+            path: Some(path.display().to_string()),
+        };
+    }
+    none
 }
 
 /// Assemble per-download HTTP options from optional IPC parameters.
@@ -159,6 +218,7 @@ pub async fn add_downloads(
                 dest.clone(),
                 segments.unwrap_or(8),
                 Some(config.0.clone()),
+                None,
                 None,
                 None,
             )
