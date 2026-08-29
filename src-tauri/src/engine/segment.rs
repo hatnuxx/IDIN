@@ -6,6 +6,10 @@ use std::io::{Seek, SeekFrom, Write};
 
 /// Download the byte range `start..=end` (inclusive) into `file`,
 /// which is seeked to `start` first. Returns bytes written.
+///
+/// `live_end` supports dynamic segment re-allocation (3.9): the caller can
+/// shrink the effective end at any time (another worker stole our tail);
+/// the download then stops at the new end instead of the original one.
 pub async fn download_segment<W>(
     client: &SharedClient,
     url: &str,
@@ -14,6 +18,7 @@ pub async fn download_segment<W>(
     file: &mut W,
     on_chunk: &mut (dyn FnMut(u64) + Send),
     opts: &RequestOptions,
+    live_end: Option<&(dyn Fn() -> u64 + Send + Sync)>,
 ) -> Result<u64, String>
 where
     W: Write + Seek + Send,
@@ -42,9 +47,19 @@ where
         .await
         .map_err(|e| format!("stream error: {e}"))?
     {
-        file.write_all(&chunk).map_err(|e| e.to_string())?;
-        written += chunk.len() as u64;
-        on_chunk(chunk.len() as u64);
+        // Stop as soon as our effective range has been shrunk away.
+        let eff_end = live_end.map(|f| f()).unwrap_or(end);
+        let pos = start + written;
+        if pos > eff_end {
+            break;
+        }
+        let keep = (((eff_end - pos + 1) as usize).min(chunk.len())).max(0);
+        file.write_all(&chunk[..keep]).map_err(|e| e.to_string())?;
+        written += keep as u64;
+        on_chunk(keep as u64);
+        if keep < chunk.len() {
+            break; // wrote up to the (new) end — done early
+        }
     }
     Ok(written)
 }
@@ -60,6 +75,7 @@ pub async fn download_segment_throttled<W>(
     on_chunk: &mut (dyn FnMut(u64) + Send),
     bytes_per_sec: u64,
     opts: &RequestOptions,
+    live_end: Option<&(dyn Fn() -> u64 + Send + Sync)>,
 ) -> Result<u64, String>
 where
     W: Write + Seek + Send,
@@ -115,9 +131,19 @@ where
         let chunk_len = chunk.len() as i64;
         bucket -= chunk_len;
 
-        file.write_all(&chunk).map_err(|e| e.to_string())?;
-        written += chunk.len() as u64;
-        on_chunk(chunk.len() as u64);
+        // Dynamic re-allocation: stop (or trim) at the shrunken end.
+        let eff_end = live_end.map(|f| f()).unwrap_or(end);
+        let pos = start + written;
+        if pos > eff_end {
+            break;
+        }
+        let keep = (((eff_end - pos + 1) as usize).min(chunk.len())).max(0);
+        file.write_all(&chunk[..keep]).map_err(|e| e.to_string())?;
+        written += keep as u64;
+        on_chunk(keep as u64);
+        if keep < chunk.len() {
+            break;
+        }
     }
     Ok(written)
 }
@@ -213,11 +239,66 @@ mod tests {
             &mut cursor,
             &mut |_| {},
             &RequestOptions::default(),
+            None,
         )
         .await
         .unwrap();
         assert_eq!(total, 1024);
         assert_eq!(&out[100..=1123], &payload[100..=1123]);
+    }
+
+    /// The download must stop at the *live* end even when the server keeps
+    /// streaming the original (longer) range — the basis of work stealing.
+    #[tokio::test]
+    async fn segment_stops_at_shrunk_live_end() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let payload: Vec<u8> = (0..=255u8).cycle().take(64 * 1024).collect();
+
+        let server_payload = payload.clone();
+        tokio::spawn(async move {
+            loop {
+                let Ok((sock, _)) = listener.accept().await else {
+                    break;
+                };
+                let p = server_payload.clone();
+                tokio::spawn(async move {
+                    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                    let mut sock = sock;
+                    let mut buf = vec![0u8; 4096];
+                    let n = sock.read(&mut buf).await.unwrap_or(0);
+                    let _ = String::from_utf8_lossy(&buf[..n]);
+                    // Ignore the requested range — send the WHOLE payload as
+                    // 206 so the client has far more bytes than it needs.
+                    let resp = format!(
+                        "HTTP/1.1 206 Partial Content\r\nContent-Length: {}\r\nContent-Range: bytes 0-{}/{}\r\nConnection: close\r\n\r\n",
+                        p.len(), p.len() - 1, p.len()
+                    );
+                    let _ = sock.write_all(resp.as_bytes()).await;
+                    let _ = sock.write_all(&p).await;
+                });
+            }
+        });
+
+        let client = crate::engine::build_client();
+        let url = format!("http://{addr}/file.bin");
+
+        let mut out: Vec<u8> = vec![0; 64 * 1024];
+        let mut cursor = std_io::Cursor::new(&mut out);
+        let stolen_at: u64 = 511; // live end shrunk from 1023 down to 511
+        let total = download_segment(
+            &client,
+            &url,
+            0,
+            1023,
+            &mut cursor,
+            &mut |_| {},
+            &RequestOptions::default(),
+            Some(&|| stolen_at),
+        )
+        .await
+        .unwrap();
+        assert_eq!(total, stolen_at + 1); // wrote exactly 0..=511
     }
 
     #[tokio::test]

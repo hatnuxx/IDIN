@@ -69,11 +69,21 @@ struct SegmentState {
 /// Per-segment state shared between the engine and its workers.
 type SegmentList = Vec<Arc<Mutex<SegmentState>>>;
 
+/// Everything a segment worker needs to (re)spawn — kept per running task so
+/// a finished worker can steal the tail of a slower one (3.9).
+struct RunContext {
+    url: String,
+    destination: PathBuf,
+    client: SharedClient,
+    opts: RequestOptions,
+}
+
 /// A task's live workers.
 struct Running {
     /// Abort handles for the active segment workers.
     handles: Vec<JoinHandle<()>>,
     segments: SegmentList,
+    ctx: RunContext,
 }
 
 /// The download orchestrator: owns tasks, spawns segment workers,
@@ -489,116 +499,220 @@ impl Engine {
         client: SharedClient,
         opts: RequestOptions,
     ) {
-        let mut handles = Vec::new();
-        let engine = Arc::new(self.clone());
-
-        for seg in seg_states.clone() {
-            let client = client.clone();
-            let opts = opts.clone();
-            let url = url.to_string();
-            let dest = destination.clone();
-            let (s, e) = {
-                let g = seg.lock().unwrap();
-                (g.start + g.written, g.end)
-            };
-            if s > e {
-                continue; // segment already complete
-            }
-            let engine_ev = engine.clone();
-            let seg = seg.clone();
-
-            // Effective speed limit: a per-task limit overrides the global one.
-            let task_limit = self
-                .tasks
-                .lock()
-                .unwrap()
-                .get(&id)
-                .map(|t| t.speed_limit)
-                .unwrap_or(0);
-            let task_limit = if task_limit > 0 {
-                task_limit
-            } else {
-                self.global_limit.load(Ordering::Relaxed)
-            };
-            let unknown_size = {
-                let g = seg.lock().unwrap();
-                g.end == u64::MAX
-            };
-
-            handles.push(tokio::spawn(async move {
-                // Each segment opens its own file handle (ranged writes).
-                let mut file = match std::fs::OpenOptions::new().write(true).open(&dest) {
-                    Ok(f) => f,
-                    Err(e) => {
-                        engine_ev.fail(id, e.to_string());
-                        return;
-                    }
-                };
-
-                let client2 = client.clone();
-                let url2 = url.clone();
-                let mut on_chunk_total: u64 = 0;
-                let seg2 = seg.clone();
-                let mut on_chunk = |n: u64| {
-                    seg2.lock().unwrap().written += n;
-                    on_chunk_total += n;
-                };
-
-                // Unknown-size tasks stream the whole body over a single
-                // plain (non-Range) connection and finish the task themselves.
-                let result = if unknown_size {
-                    segment::download_plain(&client2, &url2, &mut file, &mut on_chunk, &opts).await
-                } else if task_limit > 0 {
-                    // If there's a speed limit, wrap the download with throttling.
-                    segment::download_segment_throttled(
-                        &client2,
-                        &url2,
-                        s,
-                        e,
-                        &mut file,
-                        &mut on_chunk,
-                        task_limit,
-                        &opts,
-                    )
-                    .await
-                } else {
-                    segment::download_segment(
-                        &client2,
-                        &url2,
-                        s,
-                        e,
-                        &mut file,
-                        &mut on_chunk,
-                        &opts,
-                    )
-                    .await
-                };
-
-                match result {
-                    Ok(n) => {
-                        drop(file);
-                        let _ = n;
-                        if unknown_size {
-                            engine_ev.finish(id);
-                        }
-                    }
-                    Err(err) => {
-                        drop(file);
-                        engine_ev.fail(id, err);
-                    }
-                }
-            }));
-        }
-
+        // Register the running task first so stolen workers (3.9) can join
+        // the same entry later.
         self.running.lock().unwrap().insert(
             id,
             Running {
-                handles,
+                handles: Vec::new(),
                 segments: seg_states.clone(),
+                ctx: RunContext {
+                    url: url.to_string(),
+                    destination: destination.clone(),
+                    client: client.clone(),
+                    opts: opts.clone(),
+                },
             },
         );
+        for seg in seg_states {
+            self.spawn_one(id, seg, &client, &opts);
+        }
         // Spawn a progress reporter.
         self.spawn_progress_loop(id);
+    }
+
+    /// Spawn one segment worker and register its handle. Used both by
+    /// `spawn_segments` and by dynamic re-allocation (work stealing, 3.9).
+    fn spawn_one(
+        self: &Arc<Self>,
+        id: u64,
+        seg: Arc<Mutex<SegmentState>>,
+        client: &SharedClient,
+        opts: &RequestOptions,
+    ) {
+        if !self.running.lock().unwrap().contains_key(&id) {
+            return; // task finished/removed while we were spawning
+        }
+        let engine = Arc::new(self.clone());
+        let client = client.clone();
+        let opts = opts.clone();
+        let (url, dest) = {
+            let run = self.running.lock().unwrap();
+            match run.get(&id) {
+                Some(r) => (r.ctx.url.clone(), r.ctx.destination.clone()),
+                None => return,
+            }
+        };
+        let (s, e) = {
+            let g = seg.lock().unwrap();
+            (g.start + g.written, g.end)
+        };
+        if s > e {
+            return; // segment already complete
+        }
+        let engine_ev = engine.clone();
+        let seg_registry = seg.clone();
+
+        // Effective speed limit: a per-task limit overrides the global one.
+        let task_limit = self
+            .tasks
+            .lock()
+            .unwrap()
+            .get(&id)
+            .map(|t| t.speed_limit)
+            .unwrap_or(0);
+        let task_limit = if task_limit > 0 {
+            task_limit
+        } else {
+            self.global_limit.load(Ordering::Relaxed)
+        };
+        let unknown_size = {
+            let g = seg.lock().unwrap();
+            g.end == u64::MAX
+        };
+
+        // Live end for dynamic re-allocation: another worker may shrink
+        // our range at any moment; we then stop at the new end.
+        let seg_live = seg.clone();
+        let live_end = move || seg_live.lock().unwrap().end;
+
+        let handle = tokio::spawn(async move {
+            // Bail out if the task finished or was removed meanwhile.
+            {
+                let st = engine.tasks.lock().unwrap().get(&id).map(|t| t.state);
+                if st != Some(TaskState::Downloading) {
+                    return;
+                }
+            }
+
+            // Each segment opens its own file handle (ranged writes).
+            let mut file = match std::fs::OpenOptions::new().write(true).open(&dest) {
+                Ok(f) => f,
+                Err(e) => {
+                    engine_ev.fail(id, e.to_string());
+                    return;
+                }
+            };
+
+            let client2 = client.clone();
+            let url2 = url.clone();
+            let mut on_chunk_total: u64 = 0;
+            let seg2 = seg.clone();
+            let mut on_chunk = |n: u64| {
+                seg2.lock().unwrap().written += n;
+                on_chunk_total += n;
+            };
+
+            // Unknown-size tasks stream the whole body over a single
+            // plain (non-Range) connection and finish the task themselves.
+            let result = if unknown_size {
+                segment::download_plain(&client2, &url2, &mut file, &mut on_chunk, &opts).await
+            } else if task_limit > 0 {
+                // If there's a speed limit, wrap the download with throttling.
+                segment::download_segment_throttled(
+                    &client2,
+                    &url2,
+                    s,
+                    e,
+                    &mut file,
+                    &mut on_chunk,
+                    task_limit,
+                    &opts,
+                    Some(&live_end),
+                )
+                .await
+            } else {
+                segment::download_segment(
+                    &client2,
+                    &url2,
+                    s,
+                    e,
+                    &mut file,
+                    &mut on_chunk,
+                    &opts,
+                    Some(&live_end),
+                )
+                .await
+            };
+
+            match result {
+                Ok(n) => {
+                    drop(file);
+                    let _ = n;
+                    if unknown_size {
+                        engine_ev.finish(id);
+                    } else {
+                        // Our range is complete: try to steal the tail of
+                        // the segment with the most bytes left (3.9).
+                        engine_ev.steal_work(id);
+                    }
+                }
+                Err(err) => {
+                    drop(file);
+                    engine_ev.fail(id, err);
+                }
+            }
+        });
+
+        if let Some(r) = self.running.lock().unwrap().get_mut(&id) {
+            r.handles.push(handle);
+            // Stolen workers (3.9) bring their own segment state.
+            if !r.segments.iter().any(|s| Arc::ptr_eq(s, &seg_registry)) {
+                r.segments.push(seg_registry);
+            }
+        }
+    }
+
+    /// Bytes remaining in a segment below which stealing is not worth it.
+    const MIN_STEAL_BYTES: u64 = 512 * 1024;
+
+    /// Dynamic segment re-allocation (3.9): called by a worker whose own range
+    /// just completed. Finds the segment with the most bytes left and steals
+    /// half of its remaining range into a fresh worker, so fast connections
+    /// help slow ones instead of idling.
+    fn steal_work(self: &Arc<Self>, id: u64) {
+        // Pick the victim: the segment with the most bytes remaining.
+        let victim = {
+            let run = self.running.lock().unwrap();
+            let Some(r) = run.get(&id) else { return };
+            let mut best: Option<(Arc<Mutex<SegmentState>>, u64)> = None;
+            for seg in &r.segments {
+                let g = seg.lock().unwrap();
+                let rem = g.end.saturating_sub(g.start + g.written);
+                if rem > Self::MIN_STEAL_BYTES && best.as_ref().map_or(true, |(_, b)| rem > *b) {
+                    best = Some((seg.clone(), rem));
+                }
+            }
+            match best {
+                Some(x) => x,
+                None => return,
+            }
+        };
+
+        // Split: the victim keeps the lower half, the tail becomes a new seg.
+        let new_seg = {
+            let (victim_seg, rem) = victim;
+            let mut g = victim_seg.lock().unwrap();
+            let mid = g.start + g.written + rem / 2;
+            let stolen = SegmentState {
+                start: mid + 1,
+                end: g.end,
+                written: 0,
+            };
+            g.end = mid;
+            Arc::new(Mutex::new(stolen))
+        };
+
+        // Spawn the stolen worker using the stored context. If the task
+        // finished meanwhile, `running` has no entry and we do nothing.
+        let (client, opts) = {
+            let run = self.running.lock().unwrap();
+            match run.get(&id) {
+                Some(r) => (r.ctx.client.clone(), r.ctx.opts.clone()),
+                None => return,
+            }
+        };
+        self.spawn_one(id, new_seg, &client, &opts);
     }
 
     fn spawn_progress_loop(self: &Arc<Self>, id: u64) {
@@ -1290,6 +1404,71 @@ mod tests {
     #[test]
     fn split_ranges_more_chunks_than_bytes() {
         assert_eq!(split_ranges(2, 8).len(), 2);
+    }
+
+    #[tokio::test]
+    async fn steal_work_splits_largest_remaining_segment() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let engine = Engine::new(tx);
+
+        let dir = std::env::temp_dir().join(format!("idin_steal_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let dest = dir.join("out.bin");
+        std::fs::write(&dest, b"").unwrap();
+
+        // Register a fake downloading task + running entry.
+        let mut task = DownloadTask::new(1, "http://x/f.bin", dest.clone());
+        task.state = TaskState::Downloading;
+        engine.tasks.lock().unwrap().insert(1, task);
+
+        let done_seg = Arc::new(Mutex::new(SegmentState {
+            start: 0,
+            end: 9,
+            written: 10, // complete
+        }));
+        let victim = Arc::new(Mutex::new(SegmentState {
+            start: 0,
+            end: 2_000_000,
+            written: 0, // 2 MB remaining > MIN_STEAL_BYTES
+        }));
+        engine.running.lock().unwrap().insert(
+            1,
+            Running {
+                handles: Vec::new(),
+                segments: vec![done_seg, victim.clone()],
+                ctx: RunContext {
+                    url: "http://127.0.0.1:1/f.bin".into(),
+                    destination: dest.clone(),
+                    client: build_client(),
+                    opts: RequestOptions::default(),
+                },
+            },
+        );
+
+        engine.steal_work(1);
+
+        // Victim kept the lower half: mid = 0 + 2_000_000/2.
+        {
+            let g = victim.lock().unwrap();
+            assert_eq!(g.end, 1_000_000);
+            assert_eq!(g.start, 0);
+        }
+        // A new segment with the stolen tail was registered (victim stays).
+        let segs = {
+            let run = engine.running.lock().unwrap();
+            run.get(&1).unwrap().segments.clone()
+        };
+        assert_eq!(segs.len(), 3);
+        let g = segs[2].lock().unwrap();
+        assert_eq!((g.start, g.end, g.written), (1_000_001, 2_000_000, 0));
+
+        // Stop the stray stolen worker and clean up.
+        let handles = engine.running.lock().unwrap().remove(&1).unwrap().handles;
+        for h in handles {
+            h.abort();
+        }
+        engine.tasks.lock().unwrap().remove(&1);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Extract a `bytes=a-b` Range header value from a raw HTTP request.
