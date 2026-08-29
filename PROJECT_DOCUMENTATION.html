@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>مستندات پروژه IDIN — همه‌چیز درباره‌ی ساختن یک دانلودمنیجر مدرن</title>
+<style>
+  :root{
+    --bg:#12141a; --card:#1a1d26; --card2:#20242f; --text:#e8e6e3; --muted:#a8a49e;
+    --accent:#e5a13d; --accent2:#f0c078; --green:#5cb87a; --red:#e05d5d; --blue:#5b9bd5;
+    --border:#2c3140; --code-bg:#0d0f14;
+  }
+  *{box-sizing:border-box}
+  body{font-family:"Vazirmatn",Tahoma,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);line-height:2;margin:0;padding:0}
+  .wrap{max-width:900px;margin:0 auto;padding:24px 20px 80px}
+  h1{font-size:2rem;color:var(--accent);border-bottom:3px solid var(--accent);padding-bottom:12px}
+  h2{font-size:1.5rem;color:var(--accent2);margin-top:56px;border-inline-start:5px solid var(--accent);padding-inline-start:12px}
+  h3{font-size:1.15rem;color:var(--text);margin-top:32px}
+  code{font-family:Consolas,"Courier New",monospace;background:var(--code-bg);color:#d7ba7d;padding:2px 7px;border-radius:5px;font-size:.88em;direction:ltr;display:inline-block}
+  pre{background:var(--code-bg);border:1px solid var(--border);border-radius:10px;padding:16px 18px;overflow-x:auto;direction:ltr;text-align:left}
+  pre code{background:none;padding:0;color:#c8d3e0;line-height:1.7}
+  .box{border-radius:10px;padding:14px 18px;margin:18px 0;border:1px solid}
+  .box b:first-child{display:block;margin-bottom:6px}
+  .why{background:#1a2318;border-color:var(--green)}   .why b:first-child{color:var(--green)}
+  .warn{background:#2a1f18;border-color:var(--accent)} .warn b:first-child{color:var(--accent)}
+  .danger{background:#2a1a1a;border-color:var(--red)}  .danger b:first-child{color:var(--red)}
+  .info{background:#18222c;border-color:var(--blue)}   .info b:first-child{color:var(--blue)}
+  table{width:100%;border-collapse:collapse;margin:18px 0;font-size:.95em}
+  th,td{border:1px solid var(--border);padding:9px 12px;text-align:right}
+  th{background:var(--card2);color:var(--accent2)}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  .toc{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px 26px;margin:24px 0}
+  .toc a{color:var(--accent2);text-decoration:none}
+  .toc a:hover{color:var(--accent)}
+  ul{padding-inline-start:26px} li{margin:5px 0}
+  footer{margin-top:70px;color:var(--muted);font-size:.85em;text-align:center;border-top:1px solid var(--border);padding-top:20px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>🏛 مستندات پروژه IDIN</h1>
+<p><b>IDIN</b> یک دانلودمنیجر مدرن، سبک و متن‌باز برای ویندوز است که با <b>Tauri 2</b> و
+<b>Rust</b> ساخته شده. این سند برای کسی نوشته شده که می‌خواهد پروژه را <b>بفهمد</b>، روی آن کار
+کند یا گسترشش دهد — نه فقط اجرایش کند. زبان اصلی پروژه فارسی است و همین سند هم فارسی است.</p>
+
+<div class="toc">
+<b>📑 فهرست مطالب</b>
+<ol>
+  <li><a href="#why">چرا اصلاً IDIN؟</a></li>
+  <li><a href="#stack">چه تکنولوژی‌هایی و چرا؟</a></li>
+  <li><a href="#arch">معماری کلی</a></li>
+  <li><a href="#folders">ساختار فولدرها</a></li>
+  <li><a href="#features">توضیح تک‌تک فیچرها</a></li>
+  <li><a href="#storage">داده‌ها کجا ذخیره می‌شوند؟</a></li>
+  <li><a href="#run">نحوه اجرا و توسعه</a></li>
+  <li><a href="#decisions">چرای تصمیمات فنی</a></li>
+  <li><a href="#security">امنیت</a></li>
+  <li><a href="#troubleshoot">عیب‌یابی</a></li>
+</ol>
+</div>
+
+<h2 id="why">۱) چرا اصلاً IDIN؟</h2>
+<p>دانلودمنیجرهای معروف یا پولی‌اند، یا سنگین، یا آگهی دارند و مهم‌تر از همه قابل‌اعتماد نیستند.
+IDIN با چند هدف ساده متولد شد:</p>
+<ul>
+  <li><b>سبک:</b> حجم نصب چند مگابایت و مصرف رم پایین — برخلاف برنامه‌های Electron‌ی که هر کدام یک کروم کامل حمل می‌کنند.</li>
+  <li><b>سریع:</b> دانلود چندنخی واقعی با تقسیم فایل به قطعات (Segment) و چند اتصال همزمان.</li>
+  <li><b>ایرانی‌پسند:</b> تقویم جلالی در زمان‌بندی، رابط کاملاً فارسی با RTL درست‌وحسابی، فونت وزیرمتن.</li>
+  <li><b>متن‌باز و قابل مطالعه:</b> هر خط از کد قابل بررسی است؛ هیچ چیز پنهانی وجود ندارد.</li>
+  <li><b>قابل توسعه:</b> معماری تمیزی که یک توسعه‌دهنده تازه‌کار هم بتواند فیچر به آن اضافه کند.</li>
+</ul>
+
+<h2 id="stack">۲) چه تکنولوژی‌هایی و چرا؟</h2>
+<table>
+<tr><th>تکنولوژی</th><th>کجا استفاده شده</th><th>چرا این، نه آن‌ یکی؟</th></tr>
+<tr><td><b>Rust</b></td><td>کل بک‌اند و موتور دانلود</td><td>سرعت C، حافظه‌امن، بدون GC. برای برنامه‌ای که ده‌ها اتصال شبکه را همزمان مدیریت می‌کند و نباید crash کند، بهترین انتخاب است.</td></tr>
+<tr><td><b>Tauri 2</b></td><td>پوسته‌ی برنامه و پل وب↔Rust</td><td>به‌جای Electron که کروم را همراه برنامه می‌آورد، Tauri از WebView خود سیستم‌عامل (در ویندوز: WebView2) استفاده می‌کند. نتیجه: حجم نصب حدوداً ۱۰ برابر کمتر.</td></tr>
+<tr><td><b>Svelte 5</b></td><td>کل فرانت‌اند</td><td>بدون Virtual DOM و بسیار سبک. نسخه ۵ با «runes» (<code>$state</code>، <code>$derived</code>، <code>$effect</code>) مدیریت state را صریح و ساده می‌کند.</td></tr>
+<tr><td><b>tokio</b></td><td>زمان‌بند async موتور</td><td>هر سگمنت یک Task سبک است، نه یک Thread واقعی سنگین؛ هزاران اتصال همزمان ممکن می‌شود.</td></tr>
+<tr><td><b>reqwest</b></td><td>کلاینت HTTP</td><td>پشتیبانی از <code>Range</code> (قطعه‌قطعه)، redirect، پروکسی HTTP/SOCKS، TLS با rustls.</td></tr>
+<tr><td><b>sha2</b></td><td>بررسی صحت فایل</td><td>استاندارد SHA-256 برای verifying فایل دانلودشده.</td></tr>
+<tr><td><b>arboard</b></td><td>کلیپ‌بورد</td><td>سبک، چندسکویی، بدون وابستگی سیستمی خاص.</td></tr>
+<tr><td><b>Vazirmatn</b></td><td>فونت UI</td><td>فونت متن‌باز و باکیفیت فارسی/لاتین — برای RTL بی‌رقیب.</td></tr>
+</table>
+
+<h2 id="arch">۳) معماری کلی</h2>
+<p>مهم‌ترین قانون معماری IDIN این است: <b>موتور دانلود هیچ اطلاعی از Tauri ندارد!</b></p>
+<pre><code>┌─────────────────────────────────────────────┐
+│  WebView (Svelte 5)                         │
+│  App.svelte · TaskRow · SettingsPanel · …   │
+└──────────────┬──────────────────────────────┘
+               │ invoke() / listen()  ← پل IPC تاروی
+┌──────────────▼──────────────────────────────┐
+│  commands.rs  (لایه نازک — فقط ترجمه IPC)   │
+└──────┬───────────────────────┬───────────────┘
+       │                       │
+┌──────▼────────┐   ┌──────────▼──────────────┐
+│  Engine       │   │  Config / persist /     │
+│  (خالص Rust،  │   │  history / tray / …     │
+│   بدون tauri) │   └─────────────────────────┘
+└──────┬────────┘
+       │ reqwest + tokio
+┌──────▼────────┐
+│   اینترنت 🌐  │
+└───────────────┘</code></pre>
+<p><b>چرا این جدایی مهم است؟</b> چون کل منطق دانلود را می‌توان با <code>cargo test</code> و
+بدون هیچ پنجره‌ای تست کرد — سریع و قابل اتکا. هر وقت خواستید موتور را جایی دیگر (سرور، CLI)
+استفاده کنید، فقط پوشه <code>engine/</code> را کپی کنید؛ هیچ چیز نمی‌شکند.</p>
+
+<div class="info"><b>جریان رویدادها (Event Flow)</b>
+موتور وقتی چیزی برای گفتن دارد (پیشرفت، تغییر وضعیت) یک <code>EngineEvent</code> به کانال
+<code>mpsc</code> می‌فرستد. تابع <code>spawn_event_forwarder</code> در <code>commands.rs</code>
+این رویدادها را برمی‌دارد و با <code>app.emit</code> به وب‌ویو می‌فرستد. فرانت با
+<code>listen('download-progress')</code> گوش می‌دهد. یعنی موتور حتی نمی‌داند «UI» وجود دارد!</div>
+
+<h2 id="folders">۴) ساختار فولدرها</h2>
+<pre><code>idin-pro/
+├── src/                      ← فرانت‌اند (Svelte 5)
+│   ├── App.svelte            ← صفحه اصلی، دیالوگ‌ها، فیلترها
+│   └── lib/
+│       ├── api.ts            ← لایه typeدار روی IPC (تنها نقطه اتصال به بک)
+│       ├── i18n/             ← fa.json / en.json + ماژول i18n
+│       ├── styles/           ← تم روشن/تاریک (متغیرهای CSS)
+│       └── components/       ← TaskRow، SettingsPanel، HistoryView، …
+├── src-tauri/src/            ← بک‌اند (Rust)
+│   ├── lib.rs                ← نقطه ورود: pluginها، scheduler، tray
+│   ├── commands.rs           ← فرمان‌های IPC (لایه نازک روی engine)
+│   ├── config.rs             ← config.json + دسته‌بندی خودکار فایل‌ها
+│   ├── local_api.rs          ← سرور TCP محلی برای اکستنشن مرورگر
+│   ├── tray.rs               ← سیستم‌تری و close-to-tray
+│   ├── clipboard.rs          ← مانیتور کلیپ‌بورد
+│   ├── browser_setup.rs      ← ثبت Native-Messaging برای مرورگرها
+│   └── engine/               ← ⭐ موتور دانلود (خالص، بدون tauri)
+│       ├── mod.rs            ← صف، ورکرها، پیشرفت، توقف/ادامه، تخصیص پویا
+│       ├── task.rs           ← مدل DownloadTask و وضعیت‌هایش
+│       ├── probe.rs          ← HEAD request: اندازه، نام فایل، Range
+│       ├── segment.rs        ← ورکر یک قطعه + محدودیت سرعت
+│       ├── persist.rs        ← ذخیره وضعیت + تاریخچه + SHA-256
+│       ├── jalali.rs         ← پورت خالص Rust تقویم جلالی + تست
+│       └── events.rs         ← رویدادهای خروجی موتور
+├── extension/                ← اکستنشن مرورگر (JS خالص)
+├── src-host/                 ← برنامه Native-Messaging بین مرورگر و IDIN
+├── roadmap/ROADMAP.md        ← وضعیت پروژه (قانون: همیشه به‌روز!)
+└── scripts/                  ← اسکریپت ساخت ریلیز</code></pre>
+
+<div class="warn"><b>قانون طلایی</b>
+هیچ‌وقت از کد داخل <code>engine/</code> به Tauri وابستگی اضافه نکنید. اگر لازم شد پارامتری به
+موتور بدهید، آن را به‌صورت <code>Option&lt;T&gt;</code> به امضای متد اضافه کنید و <b>همه</b>
+فراخوان‌ها را آپدیت کنید (<code>commands.rs</code>، <code>local_api.rs</code>، تست‌ها).</div>
+
+<h2 id="features">۵) توضیح تک‌تک فیچرها</h2>
+
+<h3>🕷 دانلود چندنخی (Multi-threaded Segmented)</h3>
+<p>اول با یک درخواست HEAD از سرور می‌پرسیم: اندازه فایل چقدر است؟ آیا از
+<code>Accept-Ranges</code> (دانلود قطعه‌ای) پشتیبانی می‌کند؟ اگر بله، بازه بایت‌ها را به N قطعه
+تقسیم می‌کنیم (<code>split_ranges</code>) و هر قطعه را با هدر <code>Range: bytes=a-b</code> جدا
+دانلود می‌کنیم. سرور پاسخ <code>206 Partial Content</code> می‌دهد و ما هر قطعه را مستقیم در
+جای خودش داخل فایل از پیش‌تخصیص‌یافته می‌نویسیم. فایل‌های کوچک‌تر از ۴ مگابایت تک‌نخی دانلود
+می‌شوند چون چندنخی‌شان سود واقعی ندارد.</p>
+
+<h3>⏸ توقف / ادامه (Pause / Resume)</h3>
+<p>موقع توقف، آفست هر سگمنت در حافظه نگه داشته می‌شود. موقع ادامه، هر سگمنت از همان
+<code>start + written</code> به بعد درخواست Range می‌دهد. بعد از crash یا بستن برنامه هم
+وضعیت در <code>downloads.json</code> ذخیره شده و دانلودها قابل ادامه‌اند.</p>
+
+<h3>🔀 صف و اولویت</h3>
+<p>دانلودها در صف با ترتیب اولویت نگه داشته می‌شوند؛ می‌توانید ردیف را بالا/پایین کنید.
+سقف دانلود همزمان (<code>max_concurrent</code>) قابل تنظیم است و هر وقت جای خالی باز شود،
+بعدی خودکار شروع می‌شود (<code>pump_queue</code>).</p>
+
+<h3>🐢 محدودیت سرعت (Global و هر دانلود)</h3>
+<p>با الگوریتم <b>Token Bucket</b>: هر ثانیه «سکه‌های بایت» به سطل اضافه می‌شود و هر chunk
+دانلودی سکه مصرف می‌کند. سطل خالی شود صبر می‌کنیم. این روش جریان را یکنواخت و بدون
+پرش ناگهانی نگه می‌دارد و به‌صورت global (کل برنامه) و per-task (هر دانلود جدا) کار می‌کند.</p>
+
+<h3>📅 زمان‌بندی با تقویم جلالی</h3>
+<p>می‌توانید تعیین کنید دانلودها مثلاً ساعت ۳ بامداد شروع شوند. انتخابگر تاریخ، <b>تقویم
+جلالی</b> است با نام ماه‌های فارسی (فروردین تا اسفند). الگوریتم تبدیل جلالی↔میلادی یک پورت
+خالص Rust در <code>engine/jalali.rs</code> است با تست کامل — از crate خارجی استفاده نکردیم
+تا وابستگی اضافه نیاید و الگوریتم کاملاً زیر نظر ما باشد. بعد از اتمام همه دانلودها هم
+می‌توانید دستور <b>خاموش‌کردن / خواب / هیبرنیت</b> بدهید.</p>
+
+<h3>🗂 دسته‌بندی خودکار</h3>
+<p>بر اساس پسوند فایل، دانلود به‌طور خودکار در زیرپوشه دسته مناسب ذخیره می‌شود:
+Docs، Videos، Music، Images، Archives، Code. دسته‌ها و پسوندهایشان در تنظیمات قابل ویرایش‌اند.</p>
+
+<h3>📋 مانیتور کلیپ‌بورد و افزودن گروهی</h3>
+<p>هر وقت لینکی در کلیپ‌بورد کپی شود، یک toast کوچک گوشه صفحه ظاهر می‌شود که با یک کلیک
+دانلود را شروع می‌کند. در دیالوگ افزودن هم می‌توانید چند لینک را یکجا بچسبانید — لینک‌ها
+با regex از دل متن استخراج می‌شوند.</p>
+
+<h3>🧩 اکستنشن مرورگر</h3>
+<p>یک اکستنشن کوچک + برنامه Native-Messaging، دانلودها را با راست‌کلیک یا کلیک روی دکمه،
+مستقیم به IDIN می‌فرستند. ارتباط از طریق یک سرور TCP فقط روی <code>127.0.0.1</code> با
+<b>توکن مشترک</b> امن شده است (بخش امنیت را ببینید). نصب خودکار مرورگرها هم از داخل
+تنظیمات IDIN انجام می‌شود.</p>
+
+<h3>🕘 تاریخچه</h3>
+<p>هر دانلودِ تمام‌شده/ناموفق/لغوشده با زمان و خطا در <code>history.json</code> ثبت می‌شود.
+نمای تاریخچه جستجو و فیلتر دارد و تاریخ‌ها را با تقویم جلالی نمایش می‌دهد.</p>
+
+<h3>🔁 تلاش مجدد خودکار (Auto Retry)</h3>
+<p>اگر دانلود وسط کار قطع شود، IDIN تا ۳ بار (قابل تنظیم) با فاصله زمانی فزاینده
+(<b>backoff</b>) دوباره تلاش می‌کند — دقیقاً همان‌جایی که قطع شد، نه از صفر.</p>
+
+<h3>🔒 بررسی صحت فایل (SHA-256)</h3>
+<p>اگر سایت هش SHA-256 فایل را به شما داده، هنگام افزودن دانلود واردش کنید. بعد از اتمام،
+هش فایل دانلودشده محاسبه و مقایسه می‌شود؛ عدم تطابق = فایل خراب = وضعیت «ناموفق».</p>
+
+<h3>🧾 هدرهای HTTP، کوکی و Basic Auth اختصاصی</h3>
+<p>خیلی از سرورها بدون کوکی یا هدر خاص (مثلاً <code>Referer</code>) اجازه دانلود نمی‌دهند.
+در دیالوگ «دانلود جدید» با زدن <b>«تنظیمات پیشرفته»</b> می‌توانید برای همان یک دانلود:</p>
+<ul>
+  <li>هدرهای HTTP دلخواه (هر خط یک «نام: مقدار»)،</li>
+  <li>رشته کوکی (<code>sessionid=...; token=...</code>)،</li>
+  <li>نام کاربری/رمز <b>Basic Auth</b>،</li>
+  <li>و حتی یک پروکسی اختصاصی</li>
+</ul>
+<p>تنظیم کنید. این مقادیر به <b>همه</b> درخواست‌های همان دانلود (هم probe و هم همه سگمنت‌ها)
+اعمال می‌شوند.</p>
+
+<h3>🌐 پروکسی (HTTP / SOCKS5)</h3>
+<p>در تنظیمات یک پروکسی سراسری تعیین کنید (مثل <code>http://127.0.0.1:8080</code> یا
+<code>socks5://127.0.0.1:1080</code>) تا همه دانلودها از آن رد شوند؛ یا در «تنظیمات
+پیشرفته» هر دانلود، پروکسی جداگانه بدهید که روی سراسری اولویت دارد. کلاینت HTTP با هر تغییر
+پروکسی از نو ساخته می‌شود چون reqwest اجازه تغییر پروکسی روی کلاینت ساخته‌شده را نمی‌دهد —
+این یک تصمیم آگاهانه است.</p>
+
+<h3>♊ مدیریت دانلود تکراری</h3>
+<p>اگر لینکی را دوباره اضافه کنید که از قبل در فهرست است (یا فایلی با همان نام روی دیسک هست)،
+IDIN می‌پرسد چه کند:</p>
+<ul>
+  <li><b>ادامه دانلود</b> — اگر دانلود قبلی متوقف/در صف است، از همان‌جا ادامه می‌یابد؛</li>
+  <li><b>رونویسی</b> — دانلود قبلی حذف و از نو گرفته می‌شود؛</li>
+  <li><b>نام جدید</b> — فایل با پسوند <code>(1)</code>، <code>(2)</code> و… ذخیره می‌شود.</li>
+</ul>
+<p>اگر UI نپرسد (مثلاً دانلود از اکستنشن)، رفتار پیش‌فرض هوشمند است: تلاش برای ادامه، وگرنه
+تغییر نام. هرگز بی‌سروصدا فایل شما overwrite نمی‌شود.</p>
+
+<h3>⚡ تخصیص پویای سگمنت‌ها (Work Stealing)</h3>
+<p>فیچر جذاب نسخه ۱! فرض کنید ۸ سگمنت دارید و یکی از سرورها/اتصال‌ها کند شده. سگمنت‌هایی که
+کارشان تمام می‌شود بیکار نمی‌مانند: بازه باقی‌ماندهِ کندترین/بزرگ‌ترین سگمنت را نصف می‌کنند و
+نیمه دوم را خودشان می‌قاپند. پیاده‌سازی: end سگمنت قربانی «زنده» کوچک می‌شود
+(<code>live_end</code>) و ورکر قربانی به محض رسیدن به end جدید متوقف می‌شود — بدون از دست
+رفتن حتی یک بایت و بدون double-download. شرط دزدی: بیش از ۵۱۲ کیلوبایت باقی‌مانده باشد وگرنه
+نمی‌ارزد.</p>
+
+<h3>🔔 اعلان دسکتاپ</h3>
+<p>اتمام یا شکست هر دانلود با یک اعلان سیستم‌عامل (Windows Toast) اعلام می‌شود — از طریق
+پلاگین رسمی <code>tauri-plugin-notification</code>. متن اعلان با نماد ✓ / ✕ زبان‌مستقل است.</p>
+
+<h3>🚫 FTP؟ نه ممنون</h3>
+<p><code>reqwest</code> (و کل استک Rust ما) FTP حرف نمی‌زند. به‌جای خطای مبهمِ یک پروتکل
+نیمه‌پشتیبانی‌شده، لینک‌های <code>ftp://</code> با یک پیام واضح و فارسی‌دوستانه رد می‌شوند:
+«FTP پشتیبانی نمی‌شود — IDIN فقط از HTTP/HTTPS دانلود می‌کند.» تصمیم آگاهانه بود؛ برای یک
+پروتکل رو به مرگ، افزودن یک crate جدید توجیه نداشت.</p>
+
+<h3>🎨 تم و زبان</h3>
+<p>تم تاریک/روشن با متغیرهای CSS، دو زبان کامل فارسی/انگلیسی، RTL/LTR خودکار. هر متن جدید
+باید <b>در هر دو</b> فایل <code>fa.json</code> و <code>en.json</code> اضافه شود.</p>
+
+<h2 id="storage">۶) داده‌ها کجا ذخیره می‌شوند؟</h2>
+<table>
+<tr><th>فایل</th><th>محل</th><th>محتوا</th></tr>
+<tr><td><code>config.json</code></td><td><code>%APPDATA%\IDIN\</code></td><td>تنظیمات: پوشه دانلود، دسته‌ها، لیمیت سرعت، پروکسی، زمان‌بندی…</td></tr>
+<tr><td><code>downloads.json</code></td><td><code>%APPDATA%\IDIN\</code></td><td>وضعیت لحظه‌ای دانلودها برای ادامه بعد از crash</td></tr>
+<tr><td><code>history.json</code></td><td><code>%APPDATA%\IDIN\</code></td><td>تاریخچه دانلودهای تمام‌شده/ناموفق</td></tr>
+<tr><td><code>api_token</code></td><td><code>%LOCALAPPDATA%\IDIN\</code></td><td>توکن مشترک اکستنشن (۶۴ کاراکتر hex تصادفی)</td></tr>
+<tr><td>فایل‌های دانلودی</td><td>پوشه انتخابی شما</td><td>پیش‌فرض <code>~/Downloads/IDIN</code> با زیرپوشه دسته‌ها</td></tr>
+</table>
+<p>ذخیره‌سازی همه JSON است — برای این حجم داده، پایگاه‌داده overkill است و خواندن/دیباگ JSON
+برای انسان راحت‌تر است. نوشتن‌ها اتمیک انجام می‌شوند تا crash وسط نوشتن، فایل را خراب نکند.</p>
+
+<h2 id="run">۷) نحوه اجرا و توسعه</h2>
+<h3>پیش‌نیازها</h3>
+<ul>
+  <li><b>Rust</b> (stable) + <b>Node.js</b> ≥ 18</li>
+  <li>ویندوز ۱۰/۱۱ با <b>WebView2 Runtime</b> (روی ویندوز ۱۱ از قبل هست)</li>
+  <li>ویندوز: Visual Studio Build Tools (لینکر MSVC)</li>
+</ul>
+<h3>اجرای حالت توسعه</h3>
+<pre><code>cd idin-pro
+npm install            # اگر نصب خراب بود: rm -rf node_modules package-lock.json
+npm run tauri dev</code></pre>
+<p>اول فرانت با Vite بیلد و watch می‌شود، بعد باینری Rust کامپایل و اجرا می‌شود. هر تغییر
+فرانت hot-reload می‌شود؛ تغییرات Rust نیاز به اجرای مجدد دارد.</p>
+<h3>اجرای تست‌ها</h3>
+<pre><code>cargo test --manifest-path src-tauri/Cargo.toml</code></pre>
+<p>تست‌ها <b>بدون UI</b> اجرا می‌شوند (موتور tauri-free است) و حتی شامل تست‌های شبکه با
+سرور HTTP محلی واقعی هستند.</p>
+<h3>بیلد نسخه نهایی</h3>
+<pre><code>npm run tauri build</code></pre>
+<p>خروجی در <code>src-tauri/target/release/</code>. برای انتشار رسمی از اسکریپت
+<code>python scripts/make_release.py vX.Y.Z</code> استفاده کنید (GitHub Release می‌سازد).</p>
+
+<div class="info"><b>چرخه اضافه‌کردن یک فیچر (الگوی شناخته‌شده)</b>
+<ol style="margin:6px 0">
+<li>ماژول Rust در <code>engine/</code> (بدون tauri) · <code>pub mod</code> در mod.rs موتور</li>
+<li>فرمان <code>#[tauri::command]</code> در <code>commands.rs</code> + ثبت در <code>generate_handler!</code></li>
+<li>رَپر typeدار در <code>src/lib/api.ts</code> + کامپوننت Svelte 5 + اتصال به App</li>
+<li>متن‌های UI در fa.json <b>و</b> en.json</li>
+<li><code>cargo fmt &amp;&amp; cargo test</code> → کامیت توصیفی → به‌روزرسانی roadmap</li>
+</ol></div>
+
+<h2 id="decisions">۸) چرای تصمیمات فنی</h2>
+<table>
+<tr><th>تصمیم</th><th>چرا؟</th></tr>
+<tr><td>Tauri به‌جای Electron</td><td>حجم و رم حدوداً ۱۰ برابر کمتر؛ از WebView سیستم استفاده می‌کند. برای یک دانلودمنیجر که باید سبک بماند، حیاتی است.</td></tr>
+<tr><td>موتور بدون Tauri</td><td>تست‌پذیری با <code>cargo test</code> بدون GUI + قابلیت استفاده مجدد (CLI/سرور).</td></tr>
+<tr><td>reqwest به‌جای aria2/curl</td><td>وابستگی native خارجی نیازمند bundling و IPC اضافه بود؛ reqwest با feature <code>socks</code> همه نیازها (Range، proxy، redirect) را در همان پروسه می‌دهد.</td></tr>
+<tr><td>جلالی دستی به‌جای crate</td><td>الگوریتم jalaali شناخته‌شده و کوچک است؛ پورت دستی = صفر وابستگی + تست کامل + کنترل کامل.</td></tr>
+<tr><td>Token Bucket برای لیمیت سرعت</td><td>ساده، دقیق و بدون burst؛ جریان یکنواخت می‌ماند.</td></tr>
+<tr><td>فایل پیش‌تخصیص‌یافته (<code>set_len</code>)</td><td>سگمنت‌ها می‌توانند مستقیم و همزمان در آفست خود بنویسند بدون قفل فایل.</td></tr>
+<tr><td>work stealing با live_end</td><td>به‌جای لغو درخواست قربانی (که هزینه دارد)، فقط end او کوچک می‌شود؛ درخواست جاری تا end جدید می‌رود و بقیه بایت‌ها دور ریخته می‌شوند — ساده و بدون double-write.</td></tr>
+<tr><td>local API با توکن مشترک</td><td>هر پروسه‌ای می‌تواند به پورت محلی وصل شود؛ توکن تضمین می‌کند فقط native host معتبر دانلود تزریق کند.</td></tr>
+<tr><td>JSON به‌جای SQLite</td><td>حجم داده کوچک است؛ خوانایی و دیباگ‌پذیری مهم‌تر. نوشتن اتمیک از خرابی جلوگیری می‌کند.</td></tr>
+<tr><td>رد FTP با پیام شفاف</td><td>پروتکل رو به مرگ؛ crate اضافی ارزش نداشت. پیام واضح بهتر از خطای مبهم است.</td></tr>
+<tr><td>Svelte 5 runes</td><td>state صریح (<code>$state</code>، <code>$derived</code>) بدون boilerplate؛ کامپایل به کد حداقلی.</td></tr>
+</table>
+
+<h2 id="security">۹) امنیت</h2>
+<ul>
+  <li><b>سرور محلی اکستنشن</b> فقط روی <code>127.0.0.1:45187</code> گوش می‌دهد و هر درخواست بدون توکن معتبر رد می‌شود. پیام‌های بزرگ‌تر از ۱MB و URLهای غیر http(s) هم رد می‌شوند.</li>
+  <li><b>URL validation</b> قبل از موتور: بدون فاصله/کاراکتر کنترلی، حداکثر ۲۰۴۸ کاراکتر.</li>
+  <li><b>بدون اجرای خودکار فایل‌ها</b> — IDIN فایل دانلودشده را باز نمی‌کند.</li>
+  <li><b>هدرهای کاربر</b> اعتبارسنجی می‌شوند؛ هدر نامعتبر skip می‌شود نه اینکه دانلود را منفجر کند.</li>
+</ul>
+
+<h2 id="troubleshoot">۱۰) عیب‌یابی</h2>
+<table>
+<tr><th>مشکل</th><th>راه‌حل</th></tr>
+<tr><td><code>npm install</code> ناقص می‌ماند</td><td><code>rm -rf node_modules package-lock.json</code> سپس <code>npm install --include=dev --force</code>. بعد چک کنید <code>node_modules/.bin/tauri</code> وجود داشته باشد.</td></tr>
+<tr><td>Vite خطای EBUSY می‌دهد</td><td><code>src-tauri/target</code> باید در <code>server.watch.ignored</code> باشد (از قبل تنظیم شده — دست نزنید).</td></tr>
+<tr><td>لینت داخلی Rust خطای edition می‌دهد</td><td>خطای اشتباه ابزار است؛ فقط به <code>cargo check/test</code> اعتماد کنید.</td></tr>
+<tr><td>اعلان دسکتاپ نمی‌آید</td><td>ویندوز: Settings → System → Notifications → اجازه برای IDIN.</td></tr>
+<tr><td>resume کار نمی‌کند</td><td>بعضی سرورها <code>Accept-Ranges</code> نمی‌دهند؛ در آن صورت سرور اجازه ادامه نمی‌دهد.</td></tr>
+</table>
+
+<footer>ساخته‌شده با ❤️ و Rust — پروژه IDIN v1 · این سند زنده است؛ همراه هر فیچر جدید به‌روزرسانی شود.</footer>
+
+
+</div>
+</body>
+</html>
