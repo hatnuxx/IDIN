@@ -101,6 +101,12 @@ pub fn load_history(config_dir: &Path) -> Vec<HistoryEntry> {
         .unwrap_or_default()
 }
 
+/// Overwrite the history log (used by clear-history).
+pub fn save_history(config_dir: &Path, entries: &[HistoryEntry]) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(entries).map_err(|e| e.to_string())?;
+    std::fs::write(history_path(config_dir), json).map_err(|e| e.to_string())
+}
+
 /// Convenience: record a finished task into history.
 pub fn record_task_outcome(config_dir: &Path, task: &DownloadTask, outcome: &str) {
     let filename = task

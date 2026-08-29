@@ -255,6 +255,34 @@ pub fn set_post_action(
     crate::config::save(&config_dir, &new_cfg)
 }
 
+#[tauri::command]
+pub fn set_max_concurrent(
+    engine: State<'_, EngineState>,
+    config: State<'_, ConfigState>,
+    max: u64,
+) -> Result<(), String> {
+    engine.0.set_max_concurrent(max);
+    let config_dir = dirs_config_dir();
+    let new_cfg = {
+        let mut cfg = config.0.write().map_err(|e| e.to_string())?;
+        cfg.max_concurrent = max;
+        cfg.clone()
+    };
+    crate::config::save(&config_dir, &new_cfg)
+}
+
+// ───────────────────────────── History commands ─────────────────────────────
+
+#[tauri::command]
+pub fn get_history() -> Vec<crate::engine::persist::HistoryEntry> {
+    crate::engine::persist::load_history(&dirs_config_dir())
+}
+
+#[tauri::command]
+pub fn clear_history() -> Result<(), String> {
+    crate::engine::persist::save_history(&dirs_config_dir(), &[])
+}
+
 // ───────────────────────────── Helpers ─────────────────────────────
 
 fn config_download_dir(config: &State<'_, ConfigState>) -> PathBuf {

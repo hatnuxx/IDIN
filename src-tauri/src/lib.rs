@@ -30,6 +30,15 @@ pub fn run() {
             let shared_cfg = config::load_or_create(&config_dir);
             app.manage(config::ConfigState(shared_cfg.clone()));
 
+            // Enable engine persistence + restore tasks from the last run.
+            if let Some(state) = app.try_state::<commands::EngineState>() {
+                state.0.set_persist_dir(config_dir.clone());
+                state.0.restore_persisted(&config_dir);
+                if let Ok(c) = shared_cfg.read() {
+                    state.0.set_max_concurrent(c.max_concurrent);
+                }
+            }
+
             // Sync the global speed limit from config into the engine.
             if let Some(state) = app.try_state::<commands::EngineState>() {
                 if let Ok(c) = shared_cfg.read() {
@@ -183,6 +192,10 @@ pub fn run() {
             // Schedule & post-action commands
             commands::set_schedule,
             commands::set_post_action,
+            commands::set_max_concurrent,
+            // History commands
+            commands::get_history,
+            commands::clear_history,
             // Tray commands
             commands::show_window_cmd,
             commands::quit_app,

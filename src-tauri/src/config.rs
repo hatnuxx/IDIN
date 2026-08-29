@@ -38,6 +38,12 @@ pub struct AppConfig {
     /// Values: `null` (none), `"shutdown"`, `"sleep"`, `"hibernate"`.
     #[serde(default)]
     pub post_download_action: Option<String>,
+    /// Max simultaneous downloads (0 = unlimited).
+    #[serde(default)]
+    pub max_concurrent: u64,
+    /// Global proxy URL (http:// or socks5://); empty = no proxy.
+    #[serde(default)]
+    pub proxy_url: String,
 }
 
 fn default_close_to_tray() -> bool {
@@ -53,6 +59,8 @@ impl Default for AppConfig {
             close_to_tray: true,
             scheduled_start: None,
             post_download_action: None,
+            max_concurrent: 0,
+            proxy_url: String::new(),
         }
     }
 }

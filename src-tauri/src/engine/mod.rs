@@ -14,7 +14,7 @@ use crate::config::{self, SharedConfig};
 use events::ProgressEvent;
 use probe::probe;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use task::{DownloadTask, TaskState};
@@ -79,9 +79,16 @@ pub struct Engine {
     /// Task ordering: stores IDs in priority order.
     order: Arc<Mutex<Vec<u64>>>,
     event_tx: mpsc::UnboundedSender<EngineEvent>,
+    /// Optional persistence dir (app config dir). When set, task state and
+    /// history are written to disk.
+    persist_dir: Arc<std::sync::RwLock<Option<PathBuf>>>,
+    /// Max simultaneous downloads (0 = unlimited).
+    max_concurrent: Arc<AtomicU64>,
 }
 
 const MIN_SERVER_SIZE: u64 = 4 * 1024 * 1024; // below this, single connection
+/// Default automatic retry attempts per task.
+pub const DEFAULT_RETRIES: u32 = 3;
 
 impl Engine {
     pub fn new(event_tx: mpsc::UnboundedSender<EngineEvent>) -> Arc<Self> {
@@ -94,7 +101,77 @@ impl Engine {
             global_limit: Arc::new(AtomicU64::new(0)),
             order: Arc::new(Mutex::new(Vec::new())),
             event_tx,
+            persist_dir: Arc::new(std::sync::RwLock::new(None)),
+            max_concurrent: Arc::new(AtomicU64::new(0)),
         })
+    }
+
+    /// Enable persistence: `dir` is the app config dir.
+    pub fn set_persist_dir(&self, dir: PathBuf) {
+        *self.persist_dir.write().unwrap() = Some(dir);
+    }
+
+    /// Set the max number of simultaneous downloads (0 = unlimited). When a
+    /// slot frees up, queued tasks are started automatically.
+    pub fn set_max_concurrent(self: &Arc<Self>, n: u64) {
+        self.max_concurrent.store(n, Ordering::Relaxed);
+        self.pump_queue();
+    }
+
+    fn persist_state(&self) {
+        let dir = self.persist_dir.read().unwrap().clone();
+        if let Some(dir) = dir {
+            let tasks = self.list();
+            let _ = persist::save_state(&dir, &tasks);
+        }
+    }
+
+    /// Record a finished task into the history log (if persistence enabled).
+    fn record_history(&self, task: &DownloadTask, outcome: &str) {
+        let dir = self.persist_dir.read().unwrap().clone();
+        if let Some(dir) = dir {
+            persist::record_task_outcome(&dir, task, outcome);
+        }
+    }
+
+    fn active_count(&self) -> usize {
+        self.tasks
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|t| matches!(t.state, TaskState::Downloading | TaskState::Probing))
+            .count()
+    }
+
+    /// Start queued tasks while concurrency slots are free (priority order).
+    fn pump_queue(self: &Arc<Self>) {
+        let max = self.max_concurrent.load(Ordering::Relaxed);
+        if max == 0 {
+            return;
+        }
+        loop {
+            let active = self.active_count() as u64;
+            if active >= max {
+                return;
+            }
+            let next = {
+                let tasks = self.tasks.lock().unwrap();
+                let order = self.order.lock().unwrap();
+                order
+                    .iter()
+                    .find(|id| {
+                        tasks
+                            .get(id)
+                            .is_some_and(|t| t.state == TaskState::Queued && !t.scheduled)
+                    })
+                    .copied()
+            };
+            let Some(id) = next else { return };
+            let engine = self.clone();
+            tokio::spawn(async move {
+                let _ = engine.resume(id);
+            });
+        }
     }
 
     fn emit(&self, ev: EngineEvent) {
@@ -458,7 +535,7 @@ impl Engine {
         });
     }
 
-    fn finish(&self, id: u64) {
+    fn finish(self: &Arc<Self>, id: u64) {
         if let Ok(mut run) = self.running.lock() {
             if let Some(r) = run.remove(&id) {
                 for h in r.handles {
@@ -466,13 +543,46 @@ impl Engine {
                 }
             }
         }
-        {
+        let outcome_record: Option<DownloadTask> = {
             let mut tasks = self.tasks.lock().unwrap();
             if let Some(t) = tasks.get_mut(&id) {
+                // Verify integrity when the caller supplied a SHA-256.
+                if let Some(expected) = t.expected_sha256.clone() {
+                    match persist::file_sha256(&t.destination) {
+                        Ok(actual) if actual.eq_ignore_ascii_case(&expected) => {}
+                        Ok(actual) => {
+                            t.state = TaskState::Failed;
+                            t.last_error = Some(format!(
+                                "checksum mismatch: expected {expected}, got {actual}"
+                            ));
+                            let snapshot = t.clone();
+                            drop(tasks);
+                            self.record_history(&snapshot, "failed");
+                            self.persist_state();
+                            self.emit(EngineEvent::StateChanged {
+                                task_id: id,
+                                state: TaskState::Failed,
+                            });
+                            self.check_all_finished();
+                            self.pump_queue();
+                            return;
+                        }
+                        Err(e) => {
+                            log::warn!("sha256 check failed for task {id}: {e}");
+                        }
+                    }
+                }
                 t.state = TaskState::Done;
                 t.downloaded_bytes = t.total_bytes.unwrap_or(t.downloaded_bytes);
+                Some(t.clone())
+            } else {
+                None
             }
+        };
+        if let Some(snapshot) = outcome_record {
+            self.record_history(&snapshot, "done");
         }
+        self.persist_state();
         self.emit(EngineEvent::StateChanged {
             task_id: id,
             state: TaskState::Done,
@@ -480,6 +590,7 @@ impl Engine {
 
         // Check if ALL tasks are finished (Done or Failed).
         self.check_all_finished();
+        self.pump_queue();
     }
 
     /// If every task is Done or Failed, emit AllFinished so the backend can
@@ -497,14 +608,59 @@ impl Engine {
         }
     }
 
-    fn fail(&self, id: u64, err: String) {
-        {
+    fn fail(self: &Arc<Self>, id: u64, err: String) {
+        // Automatic retry with exponential backoff when attempts remain.
+        let (retries_used, max_retries) = {
+            let tasks = self.tasks.lock().unwrap();
+            match tasks.get(&id) {
+                Some(t) => (t.retries_used, DEFAULT_RETRIES),
+                None => (DEFAULT_RETRIES, DEFAULT_RETRIES), // no task → plain fail
+            }
+        };
+        if retries_used < max_retries {
+            if let Ok(tasks) = self.tasks.try_lock() {
+                if let Some(t) = tasks.get(&id) {
+                    // Only network-ish failures are retried; checksum
+                    // mismatches are permanent.
+                    let _ = t;
+                    if !err.contains("checksum mismatch") {
+                        let attempt = retries_used + 1;
+                        let backoff = std::time::Duration::from_secs(2u64.pow(attempt.min(4)));
+                        log::info!(
+                            "task {id} failed ({err}); retry {attempt}/{max_retries} in {backoff:?}"
+                        );
+                        let engine = self.clone();
+                        tokio::spawn(async move {
+                            tokio::time::sleep(backoff).await;
+                            {
+                                let mut tasks = engine.tasks.lock().unwrap();
+                                if let Some(t) = tasks.get_mut(&id) {
+                                    t.retries_used = attempt;
+                                    t.state = TaskState::Queued;
+                                }
+                            }
+                            engine.emit(EngineEvent::StateChanged {
+                                task_id: id,
+                                state: TaskState::Queued,
+                            });
+                            // Retry restarts from the saved segment offsets.
+                            let _ = engine.resume(id);
+                        });
+                        return;
+                    }
+                }
+            }
+        }
+        let snapshot: Option<DownloadTask> = {
             let mut tasks = self.tasks.lock().unwrap();
             if let Some(t) = tasks.get_mut(&id) {
                 t.state = TaskState::Failed;
                 t.last_error = Some(err.clone());
+                Some(t.clone())
+            } else {
+                None
             }
-        }
+        };
         if let Ok(mut run) = self.running.lock() {
             if let Some(r) = run.remove(&id) {
                 for h in r.handles {
@@ -512,11 +668,16 @@ impl Engine {
                 }
             }
         }
+        if let Some(snapshot) = snapshot {
+            self.record_history(&snapshot, "failed");
+        }
+        self.persist_state();
         self.emit(EngineEvent::StateChanged {
             task_id: id,
             state: TaskState::Failed,
         });
         self.check_all_finished();
+        self.pump_queue();
     }
 
     /// Pause: abort segment workers, keep per-segment offsets for resume.
@@ -535,11 +696,12 @@ impl Engine {
             // from `start + written` instead of re-downloading everything.
             self.paused.lock().unwrap().insert(id, segs);
             self.set_state(id, TaskState::Paused);
+            self.persist_state();
         }
     }
 
     /// Resume a Paused task from its saved offsets, or start a Queued task
-    /// (used by the scheduler for scheduled downloads).
+    /// (used by the scheduler and the concurrency queue).
     pub fn resume(self: &Arc<Self>, id: u64) -> Result<(), String> {
         let resumable = {
             let tasks = self.tasks.lock().unwrap();
@@ -551,20 +713,71 @@ impl Engine {
         if !resumable {
             return Err("task is not paused or queued".into());
         }
+        // Concurrency gate: queued (not scheduled) tasks wait for a slot.
+        let max = self.max_concurrent.load(Ordering::Relaxed);
+        if max > 0 && self.active_count() >= max as usize {
+            let tasks = self.tasks.lock().unwrap();
+            if let Some(t) = tasks.get(&id) {
+                if t.state == TaskState::Queued {
+                    return Ok(()); // stays queued; pump_queue will start it
+                }
+            }
+        }
         self.set_state(id, TaskState::Downloading);
         if let Err(e) = self.begin_download(id) {
             self.fail(id, e.clone());
             return Err(e);
         }
+        self.persist_state();
         Ok(())
     }
 
     /// Remove task (and abort any running work). File is kept on disk.
-    pub fn remove(&self, id: u64) {
+    /// The removal is recorded in the history log.
+    pub fn remove(self: &Arc<Self>, id: u64) {
+        let snapshot = {
+            let tasks = self.tasks.lock().unwrap();
+            tasks.get(&id).cloned()
+        };
         self.pause(id);
         self.paused.lock().unwrap().remove(&id);
         self.tasks.lock().unwrap().remove(&id);
         self.order.lock().unwrap().retain(|&x| x != id);
+        if let Some(t) = snapshot {
+            let was_active = !matches!(t.state, TaskState::Done | TaskState::Failed);
+            if was_active {
+                self.record_history(&t, "canceled");
+            }
+        }
+        self.persist_state();
+        self.pump_queue();
+    }
+
+    /// Load persisted tasks from a previous run into the engine
+    /// (call once at startup, before any new tasks are added).
+    pub fn restore_persisted(self: &Arc<Self>, config_dir: &Path) {
+        let tasks = persist::load_state(config_dir);
+        if tasks.is_empty() {
+            return;
+        }
+        let max_id = tasks.iter().map(|t| t.id).max().unwrap_or(0);
+        {
+            let mut map = self.tasks.lock().unwrap();
+            for t in tasks {
+                map.insert(t.id, t);
+            }
+        }
+        {
+            let mut order = self.order.lock().unwrap();
+            for id in self.tasks.lock().unwrap().keys().copied() {
+                if !order.contains(&id) {
+                    order.push(id);
+                }
+            }
+        }
+        self.next_id.store(max_id + 1, Ordering::Relaxed);
+        self.persist_state();
+        self.pump_queue();
     }
 
     pub fn list(&self) -> Vec<DownloadTask> {
