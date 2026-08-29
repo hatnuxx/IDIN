@@ -22,6 +22,7 @@ log = "0.4"
 sha2 = "0.10"
 tauri = { version = "2.11.3", features = ["tray-icon"] }
 tauri-plugin-log = "2"
+tauri-plugin-notification = "2"
 
 # Download engine
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "sync", "time", "signal"] }

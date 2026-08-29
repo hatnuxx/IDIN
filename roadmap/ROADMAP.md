@@ -34,7 +34,7 @@ Status legend: ⏳ not started · 🔄 in progress · ✅ done
 - ✅ 3.7 File integrity verification (SHA-256 when provided)
 - ✅ 3.8 Duplicate download handling (same URL/file → resume/overwrite/rename)
 - ✅ 3.9 Dynamic segment re-allocation (fast segments steal remaining bytes)
-- ⏳ 3.10 Desktop notifications (complete/failed)
+- ✅ 3.10 Desktop notifications (complete/failed)
 - ✅ 3.11 UI: search/filter list, per-download details panel, speed graph, history view
 - ✅ 3.12 FTP: out of scope for reqwest (HTTP-only) — clear user-facing error for ftp:// URLs
 - ✅ 3.13 Jalali (Persian) calendar support in scheduler display & input

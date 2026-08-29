@@ -460,6 +460,14 @@ pub fn spawn_event_forwarder(app: AppHandle, mut rx: mpsc::UnboundedReceiver<Eng
                         "download-state",
                         serde_json::json!({ "taskId": task_id, "state": state }),
                     );
+                    // Desktop notification on completion / failure (3.10).
+                    match state {
+                        crate::engine::task::TaskState::Done
+                        | crate::engine::task::TaskState::Failed => {
+                            notify_task_state(&app, task_id, state);
+                        }
+                        _ => {}
+                    }
                 }
                 EngineEvent::AllFinished => {
                     let _ = app.emit("all-downloads-finished", ());
@@ -467,6 +475,47 @@ pub fn spawn_event_forwarder(app: AppHandle, mut rx: mpsc::UnboundedReceiver<Eng
             }
         }
     });
+}
+
+/// Show a desktop notification for a finished/failed download.
+fn notify_task_state(app: &AppHandle, task_id: u64, state: crate::engine::task::TaskState) {
+    use tauri_plugin_notification::NotificationExt;
+
+    let (filename, err) = app
+        .try_state::<EngineState>()
+        .and_then(|engine| {
+            engine
+                .0
+                .list()
+                .into_iter()
+                .find(|t| t.id == task_id)
+                .map(|t| {
+                    (
+                        t.destination
+                            .file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_else(|| t.url.clone()),
+                        t.last_error.clone(),
+                    )
+                })
+        })
+        .unwrap_or_else(|| (format!("#{}", task_id), None));
+
+    // Language-neutral symbols so one build serves both fa/en users.
+    let (title, body) = match state {
+        crate::engine::task::TaskState::Done => ("IDIN", format!("✓ {filename}")),
+        _ => (
+            "IDIN",
+            match err {
+                Some(e) => format!("✕ {filename}: {e}"),
+                None => format!("✕ {filename}"),
+            },
+        ),
+    };
+
+    if let Err(e) = app.notification().builder().title(title).body(body).show() {
+        log::warn!("notification failed: {e}");
+    }
 }
 
 /// Initialize tokio runtime engine as Tauri state.
