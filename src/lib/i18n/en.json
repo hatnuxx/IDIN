@@ -1,0 +1,100 @@
+{
+  "fontFamily": {
+    "farsi": "Vazirmatn",
+    "latin": "Vazirmatn"
+  },
+  "app": {
+    "name": "IDIN",
+    "noUrl": "No link entered",
+    "noValidUrl": "No valid link found",
+    "clipTitle": "Link copied",
+    "clipDownload": "Download",
+    "multiLink": "Multi-link",
+    "batchPlaceholder": "Paste links here...\nhttps://example.com/file1.zip\nhttps://example.com/file2.mp4",
+    "batchHint": "Links are detected automatically — you can paste the full text",
+    "urlPlaceholder": "Enter a link — https://example.com/file.zip",
+    "demoNote": "(demo mode)"
+  },
+  "nav": {
+    "downloads": "Downloads",
+    "queue": "Queue",
+    "history": "History",
+    "settings": "Settings"
+  },
+  "toolbar": {
+    "newDownload": "New Download",
+    "add": "Add",
+    "batchAdd": "Add Multiple URLs",
+    "pause": "Pause",
+    "resume": "Resume",
+    "remove": "Remove",
+    "clear": "Clear"
+  },
+  "task": {
+    "downloading": "Downloading",
+    "paused": "Paused",
+    "queued": "Queued",
+    "done": "Done",
+    "failed": "Failed",
+    "speed": "Speed",
+    "eta": "ETA",
+    "speedLimit": "Speed limit",
+    "speedPlaceholder": "e.g. 500kb/s or 1mb/s",
+    "apply": "Apply",
+    "cancel": "Cancel"
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "theme": "Theme",
+    "dark": "Dark",
+    "light": "Light",
+    "segments": "Parallel segments",
+    "downloadDir": "Download Directory",
+    "speedLimit": "Speed Limit",
+    "categories": "File Categories",
+    "closeToTray": "Close to tray",
+    "closeToTrayHint": "When enabled, clicking ✕ hides the window instead of quitting. Use the system tray to quit. Requires restart.",
+    "schedule": "Download Schedule",
+    "scheduleHint": "Set a time for downloads to start. Leave empty to start immediately.",
+    "scheduleAt": "Start at:",
+    "scheduleClear": "Clear schedule",
+    "scheduleSet": "Set schedule",
+    "scheduleCurrent": "Scheduled",
+    "postAction": "After Downloads Complete",
+    "postActionHint": "Choose an action to run when all downloads finish.",
+    "postActionNone": "Do nothing",
+    "postActionShutdown": "Shut down computer",
+    "postActionSleep": "Sleep",
+    "postActionHibernate": "Hibernate",
+    "save": "Save Settings",
+    "saved": "✓ Saved",
+    "error": "✕ Error: ",
+    "scheduleClearedMsg": "✓ Schedule cleared",
+    "scheduleSetMsg": "✓ Schedule set",
+    "unlimited": "Unlimited"
+  },
+  "empty": {
+    "noDownloads": "No downloads yet",
+    "noHistory": "History is empty",
+    "hint": "Click \"New Download\" to get started"
+  },
+  "browserSetup": {
+    "title": "Browser Integration",
+    "hint": "Pick your browser — IDIN installs everything automatically; you only confirm \"Add\" once in the browser.",
+    "extidLabel": "Extension ID (optional — shown after Load unpacked)",
+    "extidPlaceholder": "e.g. abcdefghijklmnop…",
+    "install": "🏛 Auto-install",
+    "installing": "⏳ …",
+    "error": "Error",
+    "almostDone": "Almost done!",
+    "registeredFor": "The host was installed on your system and registered for:",
+    "nowJust": "Now just:",
+    "step1": "In the opened browser, go to:",
+    "step2": "Click \"Load unpacked\" (Chrome/Edge) or \"Load Temporary Add-on\" (Firefox)",
+    "step3": "Select this folder:",
+    "step4": "Copy the shown extension ID into the field above and press \"Auto-install\" again — or leave it empty",
+    "back": "Back",
+    "done": "Done"
+  }
+}

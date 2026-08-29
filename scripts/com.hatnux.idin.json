@@ -1,0 +1,7 @@
+{
+  "name": "com.hatnux.idin",
+  "description": "IDIN Download Manager native messaging host",
+  "path": "idin-host.exe",
+  "type": "stdio",
+  "allowed_origins": ["chrome-extension://EXTENSION_ID_PLACEHOLDER/"]
+}

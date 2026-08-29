@@ -1,0 +1,30 @@
+# Rust
+/src-tauri/target/
+/src-host/target/
+**/*.rs.bk
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+
+# Tauri
+/src-tauri/gen/
+/src-tauri/resources/          # staged by scripts/release.cmd (idin-host.exe + extension copy)
+
+# Hermes agent workspace (private — never commit)
+.hermes/
+**/.hermes/
+*.session.json
+# Local explain-everything doc (user-facing, generated)
+STORY.html
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local env & secrets
+.env
+*.pfx                          # code-signing certificates

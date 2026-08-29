@@ -1,0 +1,100 @@
+{
+  "fontFamily": {
+    "farsi": "وزیرمتن",
+    "latin": "Vazirmatn"
+  },
+  "app": {
+    "name": "IDIN",
+    "noUrl": "لینک وارد نشده",
+    "noValidUrl": "لینک معتبری پیدا نشد",
+    "clipTitle": "لینک کپی شد",
+    "clipDownload": "دانلود",
+    "multiLink": "چند لینکی",
+    "batchPlaceholder": "لینک‌ها را بچسبانید...\nhttps://example.com/file1.zip\nhttps://example.com/file2.mp4",
+    "batchHint": "لینک‌ها خودکار تشخیص داده می‌شوند — می‌توانید متن کامل را بچسبانید",
+    "urlPlaceholder": "لینک را وارد کنید — https://example.com/file.zip",
+    "demoNote": "(حالت دمو)"
+  },
+  "nav": {
+    "downloads": "دانلودها",
+    "queue": "صف",
+    "history": "تاریخچه",
+    "settings": "تنظیمات"
+  },
+  "toolbar": {
+    "newDownload": "دانلود جدید",
+    "add": "افزودن",
+    "batchAdd": "افزودن چند آدرس",
+    "pause": "توقف",
+    "resume": "ادامه",
+    "remove": "حذف",
+    "clear": "پاک‌سازی"
+  },
+  "task": {
+    "downloading": "در حال دانلود",
+    "paused": "متوقف شده",
+    "queued": "در صف",
+    "done": "انجام شد",
+    "failed": "ناموفق",
+    "speed": "سرعت",
+    "eta": "زمان باقی‌مانده",
+    "speedLimit": "محدودیت سرعت",
+    "speedPlaceholder": "مثلاً 500kb/s یا 1mb/s",
+    "apply": "اعمال",
+    "cancel": "لغو"
+  },
+  "settings": {
+    "title": "تنظیمات",
+    "language": "زبان",
+    "theme": "پوسته",
+    "dark": "تاریک",
+    "light": "روشن",
+    "segments": "تعداد قطعات همزمان",
+    "downloadDir": "پوشه دانلود",
+    "speedLimit": "محدودیت سرعت",
+    "categories": "دسته‌بندی فایل‌ها",
+    "closeToTray": "بسته شدن در سیستم‌تری",
+    "closeToTrayHint": "با فعال بودن این گزینه، کلیک روی ✕ پنجره را مخفی می‌کند. برای خروج از سیستم‌تری استفاده کنید. نیاز به ریستارت دارد.",
+    "schedule": "زمان‌بندی دانلود",
+    "scheduleHint": "زمان شروع دانلودها را تنظیم کنید. برای شروع فوری خالی بگذارید.",
+    "scheduleAt": "شروع در:",
+    "scheduleClear": "پاک‌کردن زمان‌بندی",
+    "scheduleSet": "ثبت زمان‌بندی",
+    "scheduleCurrent": "زمان‌بندی شده",
+    "postAction": "پس از پایان دانلودها",
+    "postActionHint": "عملی را که پس از پایان همه دانلودها انجام شود انتخاب کنید.",
+    "postActionNone": "هیچ کاری نکن",
+    "postActionShutdown": "خاموش کردن رایانه",
+    "postActionSleep": "خواب (Sleep)",
+    "postActionHibernate": "هیبرنیت",
+    "save": "ذخیره تنظیمات",
+    "saved": "✓ ذخیره شد",
+    "error": "✕ خطا: ",
+    "scheduleClearedMsg": "✓ زمان‌بندی پاک شد",
+    "scheduleSetMsg": "✓ زمان‌بندی ثبت شد",
+    "unlimited": "نامحدود"
+  },
+  "empty": {
+    "noDownloads": "دانلودی وجود ندارد",
+    "noHistory": "تاریخچه خالی است",
+    "hint": "روی «دانلود جدید» کلیک کنید"
+  },
+  "browserSetup": {
+    "title": "اتصال مرورگر",
+    "hint": "مرورگر خود را انتخاب کنید — IDIN همه‌چیز را خودکار نصب می‌کند؛ فقط یک بار در مرورگر «افزودن» را تأیید کنید.",
+    "extidLabel": "Extension ID (اختیاری — بعد از Load unpacked ظاهر می‌شود)",
+    "extidPlaceholder": "مثال: abcdefghijklmnop…",
+    "install": "🏛 نصب خودکار",
+    "installing": "⏳ …",
+    "error": "خطا",
+    "almostDone": "تقریباً تمام!",
+    "registeredFor": "Host روی سیستم نصب و برای این مرورگرها ثبت شد:",
+    "nowJust": "حالا فقط:",
+    "step1": "در مرورگر باز‌شده، به این آدرس بروید:",
+    "step2": "«Load unpacked» (کروم/اج) یا «Load Temporary Add-on» (فایرفاکس) را بزنید",
+    "step3": "این پوشه را انتخاب کنید:",
+    "step4": "ID اکستنشن نمایش‌شده را کپی و در فیلد بالا وارد کنید و «نصب خودکار» را دوباره بزنید — یا خالی بگذارید",
+    "back": "بازگشت",
+    "done": "تمام"
+  }
+}
