@@ -4,3 +4,7 @@ src-tauri/target/
 src-tauri/resources/
 src-tauri/Cargo.lock
 package-lock.json
+# Docs artifacts — hand-maintained, prettier reflow breaks their layout.
+PROJECT_DOCUMENTATION.html
+STORY.html
+roadmap/

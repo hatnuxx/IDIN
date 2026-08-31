@@ -110,7 +110,7 @@
       {/if}
       {#if task.speed_limit > 0}
         <span class="sep">·</span>
-        <span class="limit-badge">-limit {fmtBytes(task.speed_limit)}/s</span>
+        <span class="limit-badge">⬇ {fmtBytes(task.speed_limit)}/s</span>
       {/if}
       {#if task.last_error}
         <span class="sep">·</span>
@@ -124,7 +124,7 @@
       <button class="btn-action" title={t('toolbar.pause')} onclick={() => onpause?.(task.id)}
         >⏸</button
       >
-    {:else if task.state === 'paused' || task.state === 'queued' || task.state === 'failed'}
+    {:else if task.state === 'paused' || task.state === 'queued' || task.state === 'failed' || task.state === 'probing'}
       <button
         class="btn-action btn-gold"
         title={t('toolbar.resume')}
@@ -313,13 +313,12 @@
     box-shadow: 0 0 6px var(--accent-glow);
   }
   .fill.downloading-bar {
-    background-image: repeating-linear-gradient(
-        -55deg,
-        transparent 0 8px,
-        rgba(255, 255, 255, 0.13) 8px 16px
-      ),
+    background-image:
+      repeating-linear-gradient(-55deg, transparent 0 8px, rgba(255, 255, 255, 0.13) 8px 16px),
       linear-gradient(90deg, var(--accent-dim), var(--accent), var(--accent-strong));
-    background-size: 28px 100%, 100% 100%;
+    background-size:
+      28px 100%,
+      100% 100%;
     animation: stripes 0.9s linear infinite;
   }
   @keyframes stripes {

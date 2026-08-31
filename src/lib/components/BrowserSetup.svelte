@@ -1,29 +1,47 @@
 <script>
   import { t } from '$lib/i18n/i18n.svelte.js';
-  import { invoke } from '@tauri-apps/api/core';
+  import { api } from '$lib/api';
+  import { toast } from '$lib/toast.svelte.js';
 
   let { open, onclose } = $props();
 
   let step = $state(1);
-  let browser = $state('chrome');
+  let browser = $state('');
   let result = $state(null);
   let extensionId = $state('');
   let busy = $state(false);
   let stagedPath = $state('');
+  let detected = $state([]);
 
   const browsers = [
-    { id: 'chrome', name: 'Google Chrome', page: 'chrome://extensions' },
-    { id: 'edge', name: 'Microsoft Edge', page: 'edge://extensions' },
-    { id: 'firefox', name: 'Firefox', page: 'about:debugging#/runtime/this-firefox' },
+    { id: 'chrome', name: 'Google Chrome', page: 'chrome://extensions', icon: '🌐' },
+    { id: 'edge', name: 'Microsoft Edge', page: 'edge://extensions', icon: '🧭' },
+    { id: 'firefox', name: 'Firefox', page: 'about:debugging#/runtime/this-firefox', icon: '🦊' },
   ];
   const current = $derived(browsers.find((b) => b.id === browser));
 
+  // Which browsers exist on this machine — installed ones sort first.
+  // Component mounts only when the dialog opens, so a plain call is enough.
+  api
+    .detectBrowsers()
+    .then((list) => {
+      detected = list;
+      if (!browser && list.length > 0) browser = list[0];
+    })
+    .catch(() => {});
+
   async function install() {
+    if (!browser) return;
     busy = true;
     try {
-      const extPath = await invoke('stage_extension_folder');
-      result = await invoke('setup_browser_integration', { extensionId: extensionId.trim() });
-      stagedPath = extPath;
+      // One command does everything: stage the extension folder, install the
+      // native-messaging host, register it, and open the browser's page.
+      const res = await api.installForBrowser(browser, extensionId.trim());
+      result = res;
+      stagedPath = await api.stageExtension();
+      if (res.registered?.length) {
+        toast(t('browserSetup.hostOk'));
+      }
       step = 2;
     } catch (e) {
       result = { error: String(e) };
@@ -51,8 +69,10 @@
             <button
               class="browser-btn"
               class:sel={browser === b.id}
+              class:not-installed={detected.length > 0 && !detected.includes(b.id)}
               onclick={() => (browser = b.id)}
             >
+              <span aria-hidden="true">{b.icon}</span>
               {b.name}
             </button>
           {/each}
@@ -64,8 +84,10 @@
         </label>
 
         <div class="actions">
-          <button class="primary" disabled={busy} onclick={install}>
-            {busy ? t('browserSetup.installing') : t('browserSetup.install')}
+          <button class="primary" disabled={busy || !browser} onclick={install}>
+            {busy
+              ? t('browserSetup.installing')
+              : `${t('browserSetup.install')} — ${current?.name ?? ''}`}
           </button>
         </div>
       {:else}
@@ -86,7 +108,12 @@
             {t('browserSetup.nowJust')}
           </p>
           <ol class="steps">
-            <li>{t('browserSetup.step1')} <code>{current?.page}</code></li>
+            <li>
+              {t('browserSetup.step1')} <code>{current?.page}</code>
+              <button class="linklike" onclick={() => api.openExtensionPage(current?.page)}>
+                ↗ {t('browserSetup.openPage')}
+              </button>
+            </li>
             <li>{t('browserSetup.step2')}</li>
             <li>{t('browserSetup.step3')} <code>{stagedPath}</code></li>
             <li>{t('browserSetup.step4')}</li>
@@ -112,7 +139,7 @@
     z-index: 60;
   }
   .dialog {
-    width: min(520px, 92vw);
+    width: min(560px, 92vw);
     background: var(--bg-card);
     border: 1px solid var(--stroke-strong);
     border-radius: var(--radius-lg, 14px);
@@ -176,6 +203,9 @@
     color: var(--text-2);
     transition: all 0.15s;
     font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
   .browser-btn:hover {
     border-color: var(--stroke-strong);
@@ -187,6 +217,9 @@
     background: var(--accent-glow);
     font-weight: 600;
     box-shadow: 0 0 12px var(--accent-glow);
+  }
+  .browser-btn.not-installed {
+    opacity: 0.55;
   }
 
   .extid {
@@ -226,6 +259,17 @@
     direction: ltr;
     display: inline-block;
     border: 1px solid var(--stroke);
+  }
+  .linklike {
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 6px;
+    transition: all 0.15s;
+  }
+  .linklike:hover {
+    background: var(--accent-glow);
   }
 
   .actions {

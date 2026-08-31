@@ -24,7 +24,8 @@
     "searchPlaceholder": "Search downloads…",
     "addedToast": "✓ Download added",
     "removedToast": "Removed",
-    "addFailed": "Failed to add download"
+    "addFailed": "Failed to add download",
+    "filterByStatus": "Filter by status"
   },
   "stats": {
     "all": "All",
@@ -61,6 +62,7 @@
     "downloading": "Downloading",
     "paused": "Paused",
     "queued": "Queued",
+    "probing": "Preparing…",
     "done": "Done",
     "failed": "Failed",
     "speed": "Speed",
@@ -101,7 +103,28 @@
     "scheduleSetMsg": "✓ Schedule set",
     "unlimited": "Unlimited",
     "proxy": "Proxy",
-    "proxyHint": "Global HTTP/SOCKS proxy for all downloads; empty = no proxy. Each download can also set its own proxy (in Advanced options)."
+    "proxyHint": "Global HTTP/SOCKS proxy for all downloads; empty = no proxy. Each download can also set its own proxy (in Advanced options).",
+    "maxConcurrent": "Concurrent downloads",
+    "maxConcurrentHint": "Maximum number of simultaneous downloads (0 = unlimited).",
+    "dirHint": "Files are stored in category sub-folders under this path.",
+    "catHint": "Files are auto-sorted into matching sub-folders by extension. Order matters — first match wins.",
+    "catAdd": "Add",
+    "speedPlaceholder": "Unlimited, or e.g. 1mb/s",
+    "current": "Current",
+    "jalaliCalendar": "Jalali calendar:",
+    "jalaliMonth": "Jalali month",
+    "jalaliDay": "Jalali day",
+    "jalaliYear": "Jalali year",
+    "jalaliApply": "Apply Jalali date",
+    "invalidDate": "Invalid date."
+  },
+  "history": {
+    "searchPlaceholder": "Search history (filename or URL)…",
+    "done": "Succeeded",
+    "failed": "Failed",
+    "canceled": "Canceled",
+    "clear": "Clear history",
+    "loading": "Loading…"
   },
   "empty": {
     "noDownloads": "No downloads yet",
@@ -113,10 +136,13 @@
   "browserSetup": {
     "title": "Browser Integration",
     "hint": "Pick your browser — IDIN installs everything automatically; you only confirm \"Add\" once in the browser.",
+    "settingsHint": "One-click setup: native host + browser registration + extension staging.",
     "extidLabel": "Extension ID (optional — shown after Load unpacked)",
     "extidPlaceholder": "e.g. abcdefghijklmnop…",
     "install": "🏛 Auto-install",
     "installing": "⏳ …",
+    "hostOk": "✓ Native host installed and registered",
+    "openPage": "Open",
     "error": "Error",
     "almostDone": "Almost done!",
     "registeredFor": "The host was installed on your system and registered for:",

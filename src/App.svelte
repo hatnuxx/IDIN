@@ -21,7 +21,15 @@
 
   // ── Live stats (from the engine) ──
   let stats = $state({ active: 0, active_speed: 0, total: 0, completed: 0 });
-  const waitingCount = $derived(Math.max(0, stats.total - stats.active - stats.completed));
+  const waitingCount = $derived(
+    Math.max(
+      0,
+      stats.total -
+        stats.active -
+        stats.completed -
+        tasks.filter((tk) => tk.state === 'failed').length,
+    ),
+  );
 
   // ── Download list search & status filter ──
   let searchQuery = $state('');
@@ -30,9 +38,23 @@
   const FILTERS = ['all', 'downloading', 'queued', 'paused', 'done', 'failed'];
   const filterCounts = $derived(
     Object.fromEntries(
-      FILTERS.map((f) => [f, f === 'all' ? tasks.length : tasks.filter((tk) => tk.state === f).length]),
+      FILTERS.map((f) => [
+        f,
+        f === 'all' ? tasks.length : tasks.filter((tk) => tk.state === f).length,
+      ]),
     ),
   );
+
+  // Map every engine state (incl. 'probing') to a translation key.
+  const STATE_KEYS = {
+    downloading: 'task.downloading',
+    paused: 'task.paused',
+    queued: 'task.queued',
+    probing: 'task.probing',
+    done: 'task.done',
+    failed: 'task.failed',
+  };
+  const stateKeyOf = (s) => STATE_KEYS[s] ?? `task.${s}`;
 
   const filteredTasks = $derived(
     tasks.filter((tk) => {
@@ -71,7 +93,10 @@
         speed_limit: tk.speed_limit ?? 0,
         category: tk.category ?? null,
       }));
-      api.getStats().then((s) => (stats = s)).catch(() => {});
+      api
+        .getStats()
+        .then((s) => (stats = s))
+        .catch(() => {});
     } catch {
       if (tasks.length === 0) loadDemo();
     }
@@ -404,7 +429,7 @@
             >
           {/if}
         </div>
-        <div class="chips" role="tablist" aria-label="فیلتر وضعیت">
+        <div class="chips" role="tablist" aria-label={t('app.filterByStatus')}>
           {#each FILTERS as f (f)}
             <button
               class="chip"
@@ -412,7 +437,7 @@
               class:chip-dim={filterCounts[f] === 0 && f !== 'all'}
               onclick={() => (statusFilter = f)}
             >
-              {f === 'all' ? t('stats.all') : t(`task.${f}`)}
+              {f === 'all' ? t('stats.all') : t(stateKeyOf(f))}
               <span class="chip-count">{filterCounts[f]}</span>
             </button>
           {/each}
@@ -443,8 +468,12 @@
               <div class="empty-icon">🔍</div>
               <p class="empty-title">{t('empty.noResults')}</p>
               {#if hasQuery}
-                <button class="ghost" onclick={() => { searchQuery = ''; statusFilter = 'all'; }}
-                  >{t('dup.cancel')}</button
+                <button
+                  class="ghost"
+                  onclick={() => {
+                    searchQuery = '';
+                    statusFilter = 'all';
+                  }}>{t('dup.cancel')}</button
                 >
               {/if}
             {/if}
@@ -529,7 +558,8 @@
       {/if}
 
       <button class="ghost adv-toggle" onclick={() => (showAdvanced = !showAdvanced)}>
-        {showAdvanced ? '▾' : '▸'} {t('app.advanced')}
+        {showAdvanced ? '▾' : '▸'}
+        {t('app.advanced')}
       </button>
       {#if showAdvanced}
         <div class="adv-fields">
@@ -546,8 +576,18 @@
             bind:value={advCookies}
           />
           <div class="adv-row">
-            <input type="text" class="adv-input" placeholder={t('app.username')} bind:value={advUser} />
-            <input type="password" class="adv-input" placeholder={t('app.password')} bind:value={advPass} />
+            <input
+              type="text"
+              class="adv-input"
+              placeholder={t('app.username')}
+              bind:value={advUser}
+            />
+            <input
+              type="password"
+              class="adv-input"
+              placeholder={t('app.password')}
+              bind:value={advPass}
+            />
           </div>
           <input
             type="text"
@@ -589,9 +629,7 @@
       {/if}
       <div class="dialog-actions">
         <button class="ghost" onclick={cancelDuplicate}>{t('dup.cancel')}</button>
-        <button class="ghost" onclick={() => resolveDuplicate('rename')}
-          >{t('dup.rename')}</button
-        >
+        <button class="ghost" onclick={() => resolveDuplicate('rename')}>{t('dup.rename')}</button>
         <button class="ghost" onclick={() => resolveDuplicate('overwrite')}
           >{t('dup.overwrite')}</button
         >
@@ -1021,7 +1059,9 @@
     border: 1px solid var(--stroke);
     border-radius: var(--radius);
     padding: 10px 8px 8px;
-    transition: border-color 0.15s, transform 0.15s;
+    transition:
+      border-color 0.15s,
+      transform 0.15s;
   }
   .stat:hover {
     border-color: var(--stroke-strong);

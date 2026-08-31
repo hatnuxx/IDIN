@@ -114,8 +114,13 @@ pub fn setup_browser_integration(extension_id: String) -> Result<SetupResult, St
 fn find_host_exe() -> Option<std::path::PathBuf> {
     let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
     let candidates = [
+        // Installed (NSIS): exe sits in install dir, host next to it / in resources.
         exe_dir.join("idin-host.exe"),
-        exe_dir.join("../../../../../src-host/target/release/idin-host.exe"),
+        exe_dir.join("resources").join("idin-host.exe"),
+        // Dev: src-tauri/target/<profile>/ → repo root is 3 levels up.
+        exe_dir.join("../../../src-host/target/release/idin-host.exe"),
+        // Dev fallback: repo-local src-host build tree relative to the repo root.
+        exe_dir.join("../../../src-host/target/debug/idin-host.exe"),
     ];
     candidates.into_iter().find(|p| p.exists())
 }
@@ -129,11 +134,13 @@ pub fn stage_extension_folder() -> Result<String, String> {
         .parent()
         .ok_or("no parent")?
         .to_path_buf();
-    // Dev: src-tauri/target/{debug,release}/... → repo root 4 levels up + extension
-    // Installed: install dir has extension copied next to exe by the installer.
+    // Dev: src-tauri/target/{debug,release}/ → repo root is 3 levels up + extension.
+    // Installed (NSIS): the installer hooks copy the extension into
+    // %LOCALAPPDATA%\IDIN\extension; the bundled resources dir is another fallback.
     let src_candidates = [
         exe_dir.join("extension"),
-        exe_dir.join("../../../../../extension"),
+        exe_dir.join("../../../extension"),
+        exe_dir.join("resources").join("extension"),
     ];
     let src = src_candidates
         .into_iter()
@@ -188,6 +195,106 @@ pub fn detect_browsers() -> Vec<String> {
         }
     }
     found
+}
+
+/// One-click per-browser install: stages the extension folder, installs the
+/// native-messaging host, registers it for the given browser, and opens the
+/// browser's extension page. `extension_id` may be empty — the manifest keeps
+/// the placeholder origin and the dialog can be re-run after the user copies
+/// the ID shown by the browser.
+#[tauri::command]
+pub fn install_for_browser(browser: String, extension_id: String) -> Result<SetupResult, String> {
+    let result = setup_browser_integration(extension_id)?;
+    let page = match browser.as_str() {
+        "edge" => "edge://extensions",
+        "firefox" => "about:debugging#/runtime/this-firefox",
+        _ => "chrome://extensions",
+    };
+    open_extension_page(page.to_string());
+    Ok(result)
+}
+
+/// Open the browser's extension/settings page.
+///
+/// `chrome://`, `edge://` and `about:` pages are NOT http(s) URLs, so
+/// `ShellExecute` on the bare URL is rejected ("file not found"). The reliable
+/// route is `<browser.exe> <url>`; registry App Paths locates the exe without
+/// guessing install directories. Falls back to the browser's homepage when
+/// the exe can't be found.
+#[tauri::command]
+pub fn open_extension_page(page: String) {
+    let allowed = [
+        "chrome://extensions",
+        "edge://extensions",
+        "about:debugging#/runtime/this-firefox",
+        "about:debugging",
+    ];
+    if !allowed.contains(&page.as_str()) {
+        log::warn!("open_extension_page rejected: {page}");
+        return;
+    }
+    let (app_paths_key, fallback) = match page.as_str() {
+        "edge://extensions" => (
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe",
+            "https://microsoft.com/edge",
+        ),
+        "about:debugging#/runtime/this-firefox" | "about:debugging" => (
+            r"SOFTWARE\Mozilla\Mozilla Firefox\Main",
+            "https://mozilla.org",
+        ),
+        _ => (
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe",
+            "https://google.com",
+        ),
+    };
+    let exe = Command::new("reg")
+        .args(["query", &format!("HKLM\\{app_paths_key}"), "/ve"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        .and_then(|stdout| {
+            // `reg query` prints "    (Default)    REG_SZ    C:\path\to\exe".
+            stdout
+                .lines()
+                .find(|l| l.contains("REG_SZ"))
+                .and_then(|l| l.split("REG_SZ").nth(1))
+                .map(|s| s.trim().to_string())
+        })
+        .filter(|s| !s.is_empty());
+
+    let launched = if let Some(exe) = exe {
+        Command::new(exe).arg(&page).spawn().is_ok()
+    } else {
+        false
+    };
+    if !launched {
+        // Fallback: default browser homepage (http(s) — always launchable).
+        let _ = Command::new("cmd")
+            .args(["/c", "start", "", fallback])
+            .spawn();
+    }
+}
+
+/// Ensure the browser integration is in place WITHOUT any user interaction:
+/// run automatically at app startup. Installs the host binary + manifest and
+/// registers Chrome/Edge/Firefox when possible; never blocks startup. The
+/// extension ID is unknown until the user loads the unpacked extension, so
+/// the manifest keeps a placeholder origin that a later "Auto-install"
+/// (with the ID pasted) refines.
+pub fn ensure_browser_setup() {
+    let result = setup_browser_integration(String::new());
+    match result {
+        Ok(r) => {
+            if r.registered.is_empty() {
+                log::warn!("browser integration: no browser registered");
+            } else {
+                log::info!("browser integration ready for: {}", r.registered.join(", "));
+            }
+        }
+        // Expected in dev without a built host binary — not an error users see.
+        Err(e) => log::warn!("browser integration auto-setup skipped: {e}"),
+    }
 }
 
 /// Open the given URL with the OS default browser.

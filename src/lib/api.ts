@@ -89,7 +89,7 @@ export const api = {
       username: options?.username ?? null,
       password: options?.password ?? null,
       proxy: options?.proxy ?? null,
-      duplicateAction: duplicateAction ?? null,
+      duplicate_action: duplicateAction ?? null,
     }),
   checkDuplicate: (url: string, destination = '') =>
     invoke<{
@@ -136,6 +136,14 @@ export const api = {
 
   // ── Browser ──
   setupBrowser: (extensionId: string) => invoke('setup_browser_integration', { extensionId }),
+  installForBrowser: (browser: string, extensionId = '') =>
+    invoke<{
+      host_installed: boolean;
+      manifest_path: string;
+      registered: string[];
+      host_exe_found: boolean;
+    }>('install_for_browser', { browser, extensionId }),
+  openExtensionPage: (page: string) => invoke<void>('open_extension_page', { page }),
   stageExtension: () => invoke<string>('stage_extension_folder'),
   detectBrowsers: () => invoke<string[]>('detect_browsers'),
   openUrl: (url: string) => invoke<void>('open_url', { url }),

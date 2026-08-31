@@ -13,20 +13,17 @@
   CopyFiles /SILENT "$INSTDIR\resources\idin-host.exe" "$IDIN_HOSTDIR\idin-host.exe"
   CopyFiles /SILENT "$INSTDIR\resources\extension\*.*" "$IDIN_HOSTDIR\extension\"
 
-  ; Host manifest (allowed_origins wildcard via * is not supported by Chrome,
-  ; so we write an empty ID that register-host.ps1 / app can refine later).
+  ; Host manifest — `path` MUST point directly at the .exe. A .bat wrapper
+  ; goes through cmd.exe which breaks the stdio pipe browsers hand the host
+  ; (the classic "native host has exited"/error 32). The empty ID placeholder
+  ; is refined later by the app's "Auto-install" once the user pastes the ID.
   FileOpen $0 "$IDIN_HOSTDIR\com.hatnux.idin.json" w
   FileWrite $0 '{"name": "com.hatnux.idin",'
   FileWrite $0 '"description": "IDIN Download Manager native messaging host",'
-  FileWrite $0 '"path": "$IDIN_HOSTDIR\idin-native-host.bat",'
+  FileWrite $0 '"path": "$IDIN_HOSTDIR\idin-host.exe",'
   FileWrite $0 '"type": "stdio",'
   FileWrite $0 '"allowed_origins": ["chrome-extension://EXTENSION_ID/"]}'
   FileClose $0
-
-  FileOpen $1 "$IDIN_HOSTDIR\idin-native-host.bat" w
-  FileWrite $1 '@echo off'
-  FileWrite $1 '"$IDIN_HOSTDIR\idin-host.exe"'
-  FileClose $1
 
   ; Register for Chrome, Edge, Firefox (HKCU — no admin prompt).
   WriteRegStr HKCU "Software\Google\Chrome\NativeMessagingHosts\com.hatnux.idin" "" "$IDIN_HOSTDIR\com.hatnux.idin.json"

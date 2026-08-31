@@ -68,6 +68,17 @@ pub fn run() {
             // Clipboard watcher: surface copied URLs to the UI.
             clipboard::start_clipboard_watcher(app.handle().clone());
 
+            // Browser integration: silently ensure the native-messaging host
+            // is installed + registered at every startup (no user action).
+            // Runs on a thread — the copy/registry work must not block setup.
+            {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    browser_setup::ensure_browser_setup();
+                    let _ = handle;
+                });
+            }
+
             // Local API for the browser extension host.
             let engine = app
                 .try_state::<commands::EngineState>()
@@ -218,6 +229,8 @@ pub fn run() {
             commands::quit_app,
             // Browser commands
             browser_setup::setup_browser_integration,
+            browser_setup::install_for_browser,
+            browser_setup::open_extension_page,
             browser_setup::stage_extension_folder,
             browser_setup::detect_browsers,
             browser_setup::open_url,

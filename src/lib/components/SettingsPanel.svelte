@@ -1,11 +1,13 @@
 <script>
   import { t, i18n, setLang } from '$lib/i18n/i18n.svelte.js';
   import { api } from '$lib/api';
+  import BrowserSetup from '$lib/components/BrowserSetup.svelte';
 
   let config = $state(null);
   let loading = $state(true);
   let saving = $state(false);
   let saveMsg = $state('');
+  let showBrowserSetup = $state(false);
 
   // Editing state
   let editingCat = $state(null); // index of category being edited, or -1 for new
@@ -19,12 +21,18 @@
 
   // ── Jalali (Solar Hijri) scheduler state ──
   const jalaliMonths = [
-    'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
-    'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند',
-  ];
-  const jalaliMonthsEn = [
-    'Farvardin', 'Ordibehesht', 'Khordad', 'Tir', 'Mordad', 'Shahrivar',
-    'Mehr', 'Aban', 'Azar', 'Dey', 'Bahman', 'Esfand',
+    'فروردین',
+    'اردیبهشت',
+    'خرداد',
+    'تیر',
+    'مرداد',
+    'شهریور',
+    'مهر',
+    'آبان',
+    'آذر',
+    'دی',
+    'بهمن',
+    'اسفند',
   ];
   let jalaliYear = $state(1405);
   let jalaliMonth = $state(1);
@@ -38,15 +46,24 @@
     // Synchronous conversion using the well-known jalaali algorithm
     // (mirrors the Rust engine module; kept in JS for instant display).
     const d = new Date(ts * 1000);
-    return gregorianToJalaliStr(d.getFullYear(), d.getMonth() + 1, d.getDate()) +
-      ` ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    return (
+      gregorianToJalaliStr(d.getFullYear(), d.getMonth() + 1, d.getDate()) +
+      ` ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    );
   }
 
-  function div(a, b) { return Math.trunc(a / b); }
-  function mod(a, b) { return a - b * Math.floor(a / b); }
+  function div(a, b) {
+    return Math.trunc(a / b);
+  }
+  function mod(a, b) {
+    return a - b * Math.floor(a / b);
+  }
 
   function jalCal(jy) {
-    const breaks = [-61, 9, 38, 199, 426, 686, 756, 818, 1111, 1181, 1210, 1635, 2060, 2097, 2192, 2262, 2324, 2394, 2456, 3178];
+    const breaks = [
+      -61, 9, 38, 199, 426, 686, 756, 818, 1111, 1181, 1210, 1635, 2060, 2097, 2192, 2262, 2324,
+      2394, 2456, 3178,
+    ];
     const gy = jy + 621;
     let leapJ = -14;
     let jp = breaks[0];
@@ -70,7 +87,11 @@
   }
 
   function g2d(gy, gm, gd) {
-    let d = div((gy + div(gm - 8, 6) + 100100) * 1461, 4) + div(153 * mod(gm + 9, 12) + 2, 5) + gd - 34840408;
+    let d =
+      div((gy + div(gm - 8, 6) + 100100) * 1461, 4) +
+      div(153 * mod(gm + 9, 12) + 2, 5) +
+      gd -
+      34840408;
     d = d - div(div(gy + 100100 + div(gm - 8, 6), 100) * 3, 4) + 752;
     return d;
   }
@@ -119,9 +140,11 @@
 
   /** Apply the Jalali date fields → schedule timestamp. */
   async function setScheduleJalali() {
-    const jy = Number(jalaliYear), jm = Number(jalaliMonth), jd = Number(jalaliDay);
+    const jy = Number(jalaliYear),
+      jm = Number(jalaliMonth),
+      jd = Number(jalaliDay);
     if (!jy || !jm || !jd || jd > jalaliMonthLength(jy, jm)) {
-      jalaliPreview = 'تاریخ نامعتبر است.';
+      jalaliPreview = t('settings.invalidDate');
       return;
     }
     const g = d2g(j2d(jy, jm, jd));
@@ -331,7 +354,7 @@
           class="dir-input"
         />
       </div>
-      <p class="hint">فایل‌ها بر اساس دسته‌بندی در زیرپوشه‌های این مسیر ذخیره می‌شوند.</p>
+      <p class="hint">{t('settings.dirHint')}</p>
     </section>
 
     <!-- ══════════ Speed Limit ══════════ -->
@@ -340,14 +363,14 @@
       <div class="speed-row">
         <input
           type="text"
-          placeholder="نامحدود یا مثلاً 1mb/s"
+          placeholder={t('settings.speedPlaceholder')}
           bind:value={speedInput}
           onkeydown={(e) => e.key === 'Enter' && applySpeedLimit()}
         />
-        <button class="btn-sm" onclick={applySpeedLimit}>اعمال</button>
+        <button class="btn-sm" onclick={applySpeedLimit}>{t('task.apply')}</button>
       </div>
       <p class="current-speed">
-        فعلی: {formatBytes(config.global_speed_limit)}
+        {t('settings.current')}: {formatBytes(config.global_speed_limit)}
       </p>
     </section>
 
@@ -355,12 +378,11 @@
     <section class="card">
       <div class="section-header">
         <h2>📂 {t('settings.categories') || 'دسته‌بندی فایل‌ها'}</h2>
-        <button class="btn-add" onclick={() => startEditCategory(-1)}>＋ افزودن</button>
+        <button class="btn-add" onclick={() => startEditCategory(-1)}
+          >＋ {t('settings.catAdd')}</button
+        >
       </div>
-      <p class="hint">
-        فایل‌ها بر اساس پسوند خودکار در زیرپوشه مناسب قرار می‌گیرند. ترتیب مهم است — اولین تطبیق
-        برنده می‌شود.
-      </p>
+      <p class="hint">{t('settings.catHint')}</p>
 
       {#if editingCat !== null}
         <div class="cat-editor">
@@ -373,14 +395,16 @@
             class="ext-input"
           />
           <div class="editor-actions">
-            <button class="btn-sm" onclick={saveCategory}>ذخیره</button>
-            <button class="btn-sm btn-ghost" onclick={() => (editingCat = null)}>لغو</button>
+            <button class="btn-sm" onclick={saveCategory}>{t('task.apply')}</button>
+            <button class="btn-sm btn-ghost" onclick={() => (editingCat = null)}
+              >{t('task.cancel')}</button
+            >
           </div>
         </div>
       {/if}
 
       <div class="cat-list">
-        {#each config.categories as cat, idx (cat.folder)}
+        {#each config.categories as cat, idx (`${cat.folder}-${idx}`)}
           <div class="cat-row" class:editing={editingCat === idx}>
             <div class="cat-info">
               <span class="cat-name">{cat.name}</span>
@@ -423,9 +447,13 @@
 
       <!-- Jalali date entry: pick a Solar Hijri date, converts to the field above -->
       <div class="schedule-row jalali-row">
-        <span class="hint">📅 تقویم جلالی:</span>
-        <select bind:value={jalaliMonth} class="schedule-input jalali-month" aria-label="ماه جلالی">
-          {#each jalaliMonths as m, i}
+        <span class="hint">📅 {t('settings.jalaliCalendar')}</span>
+        <select
+          bind:value={jalaliMonth}
+          class="schedule-input jalali-month"
+          aria-label={t('settings.jalaliMonth')}
+        >
+          {#each jalaliMonths as m, i (m)}
             <option value={i + 1}>{m}</option>
           {/each}
         </select>
@@ -435,8 +463,8 @@
           max="31"
           bind:value={jalaliDay}
           class="schedule-input jalali-day"
-          aria-label="روز جلالی"
-          placeholder="روز"
+          aria-label={t('settings.jalaliDay')}
+          placeholder={t('settings.jalaliDay')}
         />
         <input
           type="number"
@@ -444,10 +472,10 @@
           max="1500"
           bind:value={jalaliYear}
           class="schedule-input jalali-year"
-          aria-label="سال جلالی"
-          placeholder="سال"
+          aria-label={t('settings.jalaliYear')}
+          placeholder={t('settings.jalaliYear')}
         />
-        <button class="btn-sm" onclick={setScheduleJalali}>اعمال تاریخ جلالی</button>
+        <button class="btn-sm" onclick={setScheduleJalali}>{t('settings.jalaliApply')}</button>
       </div>
       {#if jalaliPreview}
         <p class="hint">≈ {jalaliPreview}</p>
@@ -496,10 +524,21 @@
       </div>
     </section>
 
+    <!-- ══════════ Browser integration ══════════ -->
+    <section class="card">
+      <h2>🌐 {t('browserSetup.title')}</h2>
+      <p class="hint">{t('browserSetup.settingsHint')}</p>
+      <div class="post-action-row">
+        <button class="btn-sm" onclick={() => (showBrowserSetup = true)}>
+          🏛 {t('browserSetup.install')}
+        </button>
+      </div>
+    </section>
+
     <!-- ══════════ Concurrency ══════════ -->
     <section class="card">
-      <h2>⚙️ دانلود همزمان</h2>
-      <p class="hint">حداکثر تعداد دانلودهای همزمان (۰ = بدون محدودیت).</p>
+      <h2>⚙️ {t('settings.maxConcurrent')}</h2>
+      <p class="hint">{t('settings.maxConcurrentHint')}</p>
       <div class="post-action-row">
         <input
           type="number"
@@ -534,6 +573,7 @@
       <div class="setting">
         <span>{t('settings.theme')}</span>
         <select
+          value={document.documentElement.dataset.theme || 'dark'}
           onchange={(e) => {
             const theme = /** @type {HTMLSelectElement} */ (e.target).value;
             document.documentElement.dataset.theme = theme;
@@ -576,6 +616,10 @@
       </button>
     </div>
   </div>
+{/if}
+
+{#if showBrowserSetup}
+  <BrowserSetup open={showBrowserSetup} onclose={() => (showBrowserSetup = false)} />
 {/if}
 
 <style>

@@ -10,16 +10,35 @@
   let outcome = $state('all');
 
   const jalaliMonths = [
-    'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
-    'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند',
+    'فروردین',
+    'اردیبهشت',
+    'خرداد',
+    'تیر',
+    'مرداد',
+    'شهریور',
+    'مهر',
+    'آبان',
+    'آذر',
+    'دی',
+    'بهمن',
+    'اسفند',
   ];
 
-  function div(a, b) { return Math.trunc(a / b); }
-  function mod(a, b) { return a - b * Math.floor(a / b); }
+  function div(a, b) {
+    return Math.trunc(a / b);
+  }
+  function mod(a, b) {
+    return a - b * Math.floor(a / b);
+  }
   function jalCal(jy) {
-    const breaks = [-61, 9, 38, 199, 426, 686, 756, 818, 1111, 1181, 1210, 1635, 2060, 2097, 2192, 2262, 2324, 2394, 2456, 3178];
+    const breaks = [
+      -61, 9, 38, 199, 426, 686, 756, 818, 1111, 1181, 1210, 1635, 2060, 2097, 2192, 2262, 2324,
+      2394, 2456, 3178,
+    ];
     const gy = jy + 621;
-    let leapJ = -14, jp = breaks[0], jump = 0;
+    let leapJ = -14,
+      jp = breaks[0],
+      jump = 0;
     for (let i = 1; i < breaks.length; i++) {
       const jm = breaks[i];
       jump = jm - jp;
@@ -38,7 +57,11 @@
     return { leap, gy, march };
   }
   function g2d(gy, gm, gd) {
-    let d = div((gy + div(gm - 8, 6) + 100100) * 1461, 4) + div(153 * mod(gm + 9, 12) + 2, 5) + gd - 34840408;
+    let d =
+      div((gy + div(gm - 8, 6) + 100100) * 1461, 4) +
+      div(153 * mod(gm + 9, 12) + 2, 5) +
+      gd -
+      34840408;
     d = d - div(div(gy + 100100 + div(gm - 8, 6), 100) * 3, 4) + 752;
     return d;
   }
@@ -60,7 +83,8 @@
       if (k <= 185) return { jy, jm: 1 + div(k, 31), jd: mod(k, 31) + 1 };
       k -= 186;
     } else {
-      jy -= 1; k += 179;
+      jy -= 1;
+      k += 179;
       if (r.leap === 1) k += 1;
     }
     return { jy, jm: 7 + div(k, 30), jd: mod(k, 30) + 1 };
@@ -77,13 +101,27 @@
   function formatSize(bytes) {
     if (bytes == null) return '—';
     const u = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let n = bytes, i = 0;
-    while (n >= 1024 && i < 4) { n /= 1024; i++; }
+    let n = bytes,
+      i = 0;
+    while (n >= 1024 && i < 4) {
+      n /= 1024;
+      i++;
+    }
     return `${n.toFixed(i ? 1 : 0)} ${u[i]}`;
   }
 
   const outcomeIcon = { done: '✅', failed: '❌', canceled: '🚫' };
-  const outcomeLabel = { done: 'موفق', failed: 'ناموفق', canceled: 'لغوشده' };
+  const outcomeLabel = {
+    get done() {
+      return t('history.done');
+    },
+    get failed() {
+      return t('history.failed');
+    },
+    get canceled() {
+      return t('history.canceled');
+    },
+  };
 
   const filtered = $derived(
     entries.filter((e) => {
@@ -115,20 +153,20 @@
     <input
       class="history-search"
       type="search"
-      placeholder="جستجو در تاریخچه (نام فایل یا آدرس)…"
+      placeholder={t('history.searchPlaceholder')}
       bind:value={search}
     />
-    <select bind:value={outcome} class="history-filter">
-      <option value="all">همه</option>
-      <option value="done">موفق</option>
-      <option value="failed">ناموفق</option>
-      <option value="canceled">لغوشده</option>
+    <select bind:value={outcome} class="history-filter" aria-label={t('app.filterByStatus')}>
+      <option value="all">{t('stats.all')}</option>
+      <option value="done">{t('history.done')}</option>
+      <option value="failed">{t('history.failed')}</option>
+      <option value="canceled">{t('history.canceled')}</option>
     </select>
-    <button class="btn-sm btn-ghost" onclick={clear}>🗑 پاک‌کردن تاریخچه</button>
+    <button class="btn-sm btn-ghost" onclick={clear}>🗑 {t('history.clear')}</button>
   </div>
 
   {#if loading}
-    <p class="hint">در حال بارگذاری…</p>
+    <p class="hint">{t('history.loading')}</p>
   {:else if filtered.length === 0}
     <div class="empty">
       <div class="empty-icon">📋</div>
