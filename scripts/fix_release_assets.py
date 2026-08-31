@@ -1,8 +1,9 @@
-"""One-off: clean up the v1.0.0 release assets.
+"""Clean up a GitHub release's assets for IDIN.
 
-- deletes the stray IDIN_0.3.0_x64-setup.exe asset
-- uploads any missing bundle artifacts (msi)
+- deletes stale assets that don't match the target version
+- uploads any missing bundle artifacts (nsis/msi) for that version
 Run with GITHUB_TOKEN set. Idempotent: skips assets already present.
+Usage: python scripts/fix_release_assets.py [version]   (defaults to app version)
 """
 import json, glob, os, urllib.request, sys
 
@@ -11,7 +12,14 @@ if not TOKEN:
     sys.exit("set GITHUB_TOKEN")
 
 REPO = "hatnuxx/IDIN"
-KEEP_VERSION = "1.0.0"
+
+# Target version: CLI arg, else the version from tauri.conf.json.
+if len(sys.argv) > 1:
+    KEEP_VERSION = sys.argv[1].lstrip("v")
+else:
+    with open(os.path.join(os.path.dirname(__file__), "..", "src-tauri", "tauri.conf.json"), encoding="utf-8") as f:
+        KEEP_VERSION = json.load(f)["version"]
+TAG = f"v{KEEP_VERSION}"
 
 
 def api(url, method="GET", data=None, ctype="application/json"):
@@ -26,7 +34,7 @@ def api(url, method="GET", data=None, ctype="application/json"):
     return json.loads(body) if body else None
 
 
-rel = next(r for r in api(f"https://api.github.com/repos/{REPO}/releases") if r["tag_name"] == "v1.0.0")
+rel = next(r for r in api(f"https://api.github.com/repos/{REPO}/releases") if r["tag_name"] == TAG)
 rid = rel["id"]
 print("release:", rid)
 

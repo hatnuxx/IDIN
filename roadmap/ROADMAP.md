@@ -78,3 +78,9 @@ Status legend: ⏳ not started · 🔄 in progress · ✅ done
   auto-categorization (they used to bypass config and land in `~/Downloads` uncategorized)
 - ✅ feat(tray): live tooltip `IDIN — N active · X MB/s` while downloads run
 - Verified: cargo check + 44 tests, svelte-check 0 errors, vite build, working tree clean
+- ✅ v1.0.1 RELEASED: https://github.com/hatnuxx/IDIN/releases/tag/v1.0.1 —
+  assets: `IDIN_1.0.1_x64-setup.exe` (2.0 MB) + `IDIN_1.0.1_x64_en-US.msi` (2.9 MB),
+  Farsi release notes. Versions bumped in sync: package.json / Cargo.toml /
+  Cargo.lock / tauri.conf.json → 1.0.1.
+- `fix_release_assets.py` is now version-parameterized (`[version]` arg, defaults
+  to tauri.conf.json) — no more stale-asset cleanup by hand-editing the script.
