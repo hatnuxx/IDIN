@@ -65,3 +65,16 @@ Status legend: ⏳ not started · 🔄 in progress · ✅ done
   assets: `IDIN_1.0.0_x64-setup.exe` (1.9 MB) + `IDIN_1.0.0_x64_en-US.msi` (2.9 MB),
   Farsi release notes, tag on `main`. (Stale 0.3.0 bundle leftover cleaned up;
   use `scripts/fix_release_assets.py` for idempotent asset maintenance.)
+
+## Post-release (v1.0.0+) — UI/UX & bug-fix pass (2026-08-31)
+- ✅ UI: live stats bar (active / total speed / waiting / completed)
+- ✅ UI: filter chips with live counts replacing the status dropdown
+- ✅ UI: global action toasts (add / pause / resume / remove / errors) via a tiny Svelte-5 toast store
+- ✅ UI: per-file-type icons, ETA display, animated striped progress bar, friendly empty states
+- ✅ fix(config): config dir unified to `%APPDATA%\IDIN` — load previously came from Tauri's
+  `app_config_dir()` while saves went to `%APPDATA%\IDIN`, silently resetting settings on every
+  restart. One-time migration copies legacy `com.hatnux.idin` files into the canonical dir.
+- ✅ fix(extension): extension downloads now honor the configured `download_dir` and
+  auto-categorization (they used to bypass config and land in `~/Downloads` uncategorized)
+- ✅ feat(tray): live tooltip `IDIN — N active · X MB/s` while downloads run
+- Verified: cargo check + 44 tests, svelte-check 0 errors, vite build, working tree clean
