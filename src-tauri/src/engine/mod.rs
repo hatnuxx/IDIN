@@ -159,10 +159,17 @@ impl Engine {
     }
 
     /// Record a finished task into the history log (if persistence enabled).
+    /// Disk I/O runs on a throwaway OS thread so completion paths never stall
+    /// on the filesystem (record_history may be called from sync code without
+    /// an async reactor context).
     fn record_history(&self, task: &DownloadTask, outcome: &str) {
         let dir = self.persist_dir.read().unwrap().clone();
         if let Some(dir) = dir {
-            persist::record_task_outcome(&dir, task, outcome);
+            let task = task.clone();
+            let outcome = outcome.to_string();
+            std::thread::spawn(move || {
+                persist::record_task_outcome(&dir, &task, &outcome);
+            });
         }
     }
 

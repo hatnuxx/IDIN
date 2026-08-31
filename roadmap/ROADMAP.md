@@ -84,3 +84,25 @@ Status legend: ⏳ not started · 🔄 in progress · ✅ done
   Cargo.lock / tauri.conf.json → 1.0.1.
 - `fix_release_assets.py` is now version-parameterized (`[version]` arg, defaults
   to tauri.conf.json) — no more stale-asset cleanup by hand-editing the script.
+
+## Post-release (v1.0.1+) — one-click extension install & frontend fixes (2026-08-31)
+- ✅ feat(setup): in-app one-click browser extension install — Settings → Browser
+  Integration dialog redesigned: detects installed browsers (registry), per-browser
+  install (`install_for_browser`), auto-opens `chrome://extensions` /
+  `edge://extensions` / `about:debugging` via `open_extension_page`
+- ✅ feat(setup): `ensure_browser_setup` at startup — silently stages host + extension
+  to `%LOCALAPPDATA%\IDIN`, writes manifest, registers HKCU keys for installed browsers
+- ✅ fix(setup): dev/installed path candidates for extension staging + host exe
+  (incl. `resources/` next to the installed exe)
+- ✅ fix(nsis): installer hook manifest now points at the exe directly — the .bat
+  wrapper broke the native-messaging stdio pipe
+- ✅ fix(dup): `add_download` honors `duplicateAction` (resume/overwrite/rename were
+  silently ignored)
+- ✅ fix(ui): probing state rendered, waitingCount clamped ≥0, theme select initial
+  value, stable each-block keys, localized limit badge
+- ✅ i18n: all hardcoded Farsi strings (history, settings, filters, schedule) moved
+  to en/fa.json
+- Verified: cargo fmt/check + 44 tests, prettier/eslint/svelte-check clean, vite
+  build, live CDP smoke test of the full install flow (detect → install → manifest
+  update with real extension ID → open extensions page)
+- ✅ v1.0.2 RELEASED: (assets pending below)

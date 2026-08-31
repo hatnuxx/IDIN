@@ -18,30 +18,28 @@ pub struct SetupResult {
     pub host_exe_found: bool,
 }
 
-/// Robust copy: retries when the destination is locked by another process
-/// (common with idin-host.exe still running as a native messaging host).
-fn copy_with_retry(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
-    // First attempt: direct copy.
-    match std::fs::copy(src, dst) {
-        Ok(_) => return Ok(()),
-        Err(e) if e.raw_os_error() == Some(32) => {} // file in use — try rename strategy
-        Err(e) => return Err(format!("copy {}: {}", src.display(), e)),
+/// Robust self-replacing copy for `idin-host.exe`, which the browser keeps
+/// running (locked) as a native-messaging host.
+///
+/// On Windows a running exe's *replacement* is allowed but its *deletion* is
+/// not, so the reliable sequence is:
+///   1. try a plain copy (first install — nothing is running yet)
+///   2. if the destination is locked (os error 32): rename the OLD exe to
+///      `idin-host.old.exe` (renaming a running exe is legal), then copy the
+///      new one into place
+///   3. best-effort delete any stale `.old` from a previous replace — it may
+///      still be running; it will succeed on some future run
+fn copy_locked_host(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+    // Fast path: normal copy (host not running).
+    if std::fs::copy(src, dst).is_ok() {
+        return Ok(());
     }
-    // File is locked — write to a temp sibling and atomically replace via rename.
-    let tmp = dst.with_extension("tmp");
-    std::fs::copy(src, &tmp).map_err(|e| format!("copy to tmp: {e}"))?;
-    // std::fs::rename works on Windows when src and dst are on the same volume,
-    // even if dst is locked — it replaces the file object in-place.
-    match std::fs::rename(&tmp, dst) {
-        Ok(_) => Ok(()),
-        Err(_) => {
-            // rename failed (different volumes or still locked) — fall back to
-            // RemoveFile + Rename. Best-effort; will succeed once the host exits.
-            let _ = std::fs::remove_file(dst);
-            std::fs::rename(&tmp, dst).map_err(|e| format!("replace {}: {e}", dst.display()))?;
-            Ok(())
-        }
-    }
+    // Destination locked — move the running exe aside and copy fresh.
+    let old = dst.with_extension("old.exe");
+    let _ = std::fs::remove_file(&old); // stale leftover from a previous swap
+    std::fs::rename(dst, &old).map_err(|e| format!("move old host aside: {e}"))?;
+    std::fs::copy(src, dst).map_err(|e| format!("copy host: {e}"))?;
+    Ok(())
 }
 
 /// Run the full setup. `extension_id` is the browser-assigned extension ID
@@ -58,7 +56,7 @@ pub fn setup_browser_integration(extension_id: String) -> Result<SetupResult, St
     let host_exe = find_host_exe()
         .ok_or("idin-host.exe not found — build it with: cargo build --release (in src-host/)")?;
     let host_dst = base.join("idin-host.exe");
-    copy_with_retry(&host_exe, &host_dst).map_err(|e| format!("copy host: {e}"))?;
+    copy_locked_host(&host_exe, &host_dst).map_err(|e| format!("copy host: {e}"))?;
 
     let origin = if extension_id.is_empty() {
         "chrome-extension://EXTENSION_ID/".to_string()

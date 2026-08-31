@@ -112,6 +112,15 @@ impl DownloadTask {
             }
         })
     }
+
+    /// Seconds elapsed since the task was added (for history duration).
+    pub fn elapsed_secs(&self) -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+            .saturating_sub(self.created_at)
+    }
 }
 
 #[cfg(test)]
