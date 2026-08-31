@@ -1,6 +1,6 @@
 [package]
 name = "idin"
-version = "1.0.0"
+version = "1.0.1"
 description = "IDIN — a modern, lightweight download manager"
 authors = ["hatnux <hatnux@gmail.com>"]
 license = "MIT"
