@@ -5,6 +5,10 @@
   import BrowserSetup from '$lib/components/BrowserSetup.svelte';
   import SettingsPanel from '$lib/components/SettingsPanel.svelte';
   import HistoryView from '$lib/components/HistoryView.svelte';
+  import { fly, fade } from 'svelte/transition';
+  import { flip } from 'svelte/animate';
+  import { fmtBytes } from '$lib/fmt.js';
+  import { toast, getToasts } from '$lib/toast.svelte.js';
 
   let theme = $state('dark');
   let view = $state('downloads');
@@ -15,9 +19,20 @@
   let batchMode = $state(false);
   let errorMsg = $state('');
 
+  // ── Live stats (from the engine) ──
+  let stats = $state({ active: 0, active_speed: 0, total: 0, completed: 0 });
+  const waitingCount = $derived(Math.max(0, stats.total - stats.active - stats.completed));
+
   // ── Download list search & status filter ──
   let searchQuery = $state('');
   let statusFilter = $state('all'); // all | downloading | paused | queued | done | failed
+
+  const FILTERS = ['all', 'downloading', 'queued', 'paused', 'done', 'failed'];
+  const filterCounts = $derived(
+    Object.fromEntries(
+      FILTERS.map((f) => [f, f === 'all' ? tasks.length : tasks.filter((tk) => tk.state === f).length]),
+    ),
+  );
 
   const filteredTasks = $derived(
     tasks.filter((tk) => {
@@ -26,6 +41,9 @@
       return tk.name.toLowerCase().includes(searchQuery.toLowerCase());
     }),
   );
+
+  const hasQuery = $derived(searchQuery.trim().length > 0);
+  const listIsEmpty = $derived(tasks.length === 0);
 
   // ── Clipboard URL toast ──
   let clipUrl = $state(null); // URL offered from clipboard
@@ -53,6 +71,7 @@
         speed_limit: tk.speed_limit ?? 0,
         category: tk.category ?? null,
       }));
+      api.getStats().then((s) => (stats = s)).catch(() => {});
     } catch {
       if (tasks.length === 0) loadDemo();
     }
@@ -234,8 +253,10 @@
       batchMode = false;
       resetAdvanced();
       refresh();
+      toast(t('app.addedToast'));
     } catch (e) {
       errorMsg = String(e);
+      toast(t('app.addFailed'), 'err');
     }
   }
 
@@ -249,6 +270,7 @@
   async function pause(id) {
     try {
       await api.pause(id);
+      toast(t('toolbar.pause'));
       refresh();
     } catch {
       /* keep UI state; refresh picks it up */
@@ -260,6 +282,7 @@
     clipUrl = null;
     try {
       await api.addDownload(url, '', 8);
+      toast(t('app.addedToast'));
       refresh();
     } catch (e) {
       errorMsg = String(e);
@@ -269,6 +292,7 @@
   async function resume(id) {
     try {
       await api.resume(id);
+      toast(t('toolbar.resume'));
       refresh();
     } catch {
       /* keep UI state; refresh picks it up */
@@ -277,6 +301,7 @@
   async function remove(id) {
     try {
       await api.remove(id);
+      toast(t('app.removedToast'));
       refresh();
     } catch {
       /* keep UI state; refresh picks it up */
@@ -315,8 +340,9 @@
     <div class="ornament-divider"></div>
 
     <nav>
-      {#each ['downloads', 'queue', 'history', 'settings'] as v (v)}
+      {#each [['downloads', '⬇'], ['queue', '☰'], ['history', '🕘'], ['settings', '⚙']] as [v, icon] (v)}
         <button class="nav-item" class:active={view === v} onclick={() => (view = v)}>
+          <span class="nav-icon" aria-hidden="true">{icon}</span>
           <span>{t(`nav.${v}`)}</span>
         </button>
       {/each}
@@ -343,37 +369,85 @@
     </header>
 
     {#if view === 'downloads' || view === 'queue'}
+      <!-- ══════════ Live stats bar ══════════ -->
+      <div class="stats-row" transition:fade={{ duration: 120 }}>
+        <div class="stat stat-accent">
+          <span class="stat-val">{stats.active}</span>
+          <span class="stat-label">{t('stats.active')}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-val">{fmtBytes(stats.active_speed)}/s</span>
+          <span class="stat-label">{t('stats.speed')}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-val">{waitingCount}</span>
+          <span class="stat-label">{t('stats.queued')}</span>
+        </div>
+        <div class="stat stat-done">
+          <span class="stat-val">{stats.completed}</span>
+          <span class="stat-label">{t('stats.done')}</span>
+        </div>
+      </div>
+
       <div class="list-toolbar">
-        <input
-          type="search"
-          class="list-search"
-          placeholder="🔍 جستجوی دانلودها…"
-          bind:value={searchQuery}
-        />
-        <select bind:value={statusFilter} class="list-filter" aria-label="فیلتر وضعیت">
-          <option value="all">همه</option>
-          <option value="downloading">در حال دانلود</option>
-          <option value="queued">در صف</option>
-          <option value="paused">متوقف</option>
-          <option value="done">تمام‌شده</option>
-          <option value="failed">ناموفق</option>
-        </select>
+        <div class="search-wrap">
+          <span class="search-icon" aria-hidden="true">🔍</span>
+          <input
+            type="search"
+            class="list-search"
+            placeholder={t('app.searchPlaceholder')}
+            bind:value={searchQuery}
+          />
+          {#if hasQuery}
+            <button class="search-clear" title={t('dup.cancel')} onclick={() => (searchQuery = '')}
+              >✕</button
+            >
+          {/if}
+        </div>
+        <div class="chips" role="tablist" aria-label="فیلتر وضعیت">
+          {#each FILTERS as f (f)}
+            <button
+              class="chip"
+              class:active={statusFilter === f}
+              class:chip-dim={filterCounts[f] === 0 && f !== 'all'}
+              onclick={() => (statusFilter = f)}
+            >
+              {f === 'all' ? t('stats.all') : t(`task.${f}`)}
+              <span class="chip-count">{filterCounts[f]}</span>
+            </button>
+          {/each}
+        </div>
       </div>
       <div class="list">
         {#each filteredTasks as tk (tk.id)}
-          <TaskRow
-            task={tk}
-            onpause={pause}
-            onresume={resume}
-            onremove={remove}
-            onspeedlimit={speedLimit}
-          />
+          <div animate:flip={{ duration: 200 }}>
+            <TaskRow
+              task={tk}
+              onpause={pause}
+              onresume={resume}
+              onremove={remove}
+              onspeedlimit={speedLimit}
+            />
+          </div>
         {/each}
         {#if filteredTasks.length === 0}
-          <div class="empty">
-            <div class="empty-icon">📥</div>
-            <p>{t('empty.noDownloads') || 'دانلودی وجود ندارد'}</p>
-            <p class="empty-hint">{t('empty.hint') || 'روی «دانلود جدید» کلیک کنید'}</p>
+          <div class="empty" in:fade={{ duration: 150 }}>
+            {#if listIsEmpty}
+              <div class="empty-icon">📥</div>
+              <p class="empty-title">{t('empty.noDownloads')}</p>
+              <p class="empty-hint">{t('empty.hint')}</p>
+              <button class="primary empty-cta" onclick={() => (showAdd = true)}
+                >{t('empty.cta')}</button
+              >
+            {:else}
+              <div class="empty-icon">🔍</div>
+              <p class="empty-title">{t('empty.noResults')}</p>
+              {#if hasQuery}
+                <button class="ghost" onclick={() => { searchQuery = ''; statusFilter = 'all'; }}
+                  >{t('dup.cancel')}</button
+                >
+              {/if}
+            {/if}
           </div>
         {/if}
       </div>
@@ -394,8 +468,23 @@
   <BrowserSetup open={showBrowserSetup} onclose={() => (showBrowserSetup = false)} />
 {/if}
 
+<!-- ═══════════ Global action toasts ═══════════ -->
+{#if getToasts().length}
+  <div class="toasts" aria-live="polite">
+    {#each getToasts() as to (to.id)}
+      <div
+        class="app-toast"
+        class:app-toast-err={to.kind === 'err'}
+        transition:fly={{ y: 12, duration: 160 }}
+      >
+        {to.msg}
+      </div>
+    {/each}
+  </div>
+{/if}
+
 {#if clipUrl}
-  <div class="clip-toast" role="status">
+  <div class="clip-toast" role="status" transition:fly={{ y: 20, duration: 200 }}>
     <div class="clip-toast-icon">📋</div>
     <div class="clip-toast-body">
       <div class="clip-toast-title">{t('app.clipTitle')}</div>
@@ -411,8 +500,8 @@
 {/if}
 
 {#if showAdd}
-  <div class="overlay" role="dialog" aria-modal="true">
-    <div class="dialog">
+  <div class="overlay" role="dialog" aria-modal="true" transition:fade={{ duration: 120 }}>
+    <div class="dialog" transition:fly={{ y: 16, duration: 180 }}>
       <div class="dialog-header">
         <h3>{t('toolbar.newDownload')}</h3>
         <label class="batch-toggle">
@@ -486,8 +575,8 @@
 
 <!-- ═══════════ Duplicate download dialog (3.8) ═══════════ -->
 {#if showDup && dupInfo}
-  <div class="overlay" role="dialog" aria-modal="true">
-    <div class="dialog">
+  <div class="overlay" role="dialog" aria-modal="true" transition:fade={{ duration: 120 }}>
+    <div class="dialog" transition:fly={{ y: 16, duration: 180 }}>
       <div class="dialog-header">
         <h3>⚠ {t('dup.title')}</h3>
         <button class="btn-toast-ghost" onclick={cancelDuplicate}>✕</button>
@@ -661,9 +750,6 @@
   }
   .list-search {
     flex: 1;
-  }
-  .list-filter {
-    max-width: 150px;
   }
   .list {
     flex: 1;
@@ -917,5 +1003,172 @@
     background: var(--accent-glow);
     border-color: var(--stroke-strong);
     color: var(--accent);
+  }
+
+  /* ═══════════ Live stats bar ═══════════ */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    background: var(--bg-card);
+    border: 1px solid var(--stroke);
+    border-radius: var(--radius);
+    padding: 10px 8px 8px;
+    transition: border-color 0.15s, transform 0.15s;
+  }
+  .stat:hover {
+    border-color: var(--stroke-strong);
+    transform: translateY(-1px);
+  }
+  .stat-val {
+    font-size: 17px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    direction: ltr;
+  }
+  .stat-label {
+    font-size: 11px;
+    color: var(--text-3);
+  }
+  .stat-accent .stat-val {
+    color: var(--accent);
+  }
+  .stat-done .stat-val {
+    color: var(--success);
+  }
+
+  /* ═══════════ Search box ═══════════ */
+  .search-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 180px;
+  }
+  .search-icon {
+    position: absolute;
+    inset-inline-start: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    opacity: 0.55;
+    pointer-events: none;
+  }
+  .list-search {
+    width: 100%;
+    padding-inline-start: 34px;
+  }
+  .search-clear {
+    position: absolute;
+    inset-inline-end: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    border-radius: 6px;
+    font-size: 11px;
+    color: var(--text-3);
+  }
+  .search-clear:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+
+  /* ═══════════ Filter chips ═══════════ */
+  .chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--stroke);
+    background: var(--bg-card);
+    color: var(--text-2);
+    font-size: 12px;
+    transition: all 0.15s;
+  }
+  .chip:hover {
+    border-color: var(--stroke-strong);
+    color: var(--text);
+  }
+  .chip.active {
+    background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+    border-color: transparent;
+    color: #1b1b1b;
+    font-weight: 700;
+  }
+  .chip-dim {
+    opacity: 0.55;
+  }
+  .chip-count {
+    font-size: 10px;
+    font-weight: 700;
+    background: color-mix(in srgb, currentColor 15%, transparent);
+    border-radius: 10px;
+    padding: 0 7px;
+    font-variant-numeric: tabular-nums;
+  }
+  .chip.active .chip-count {
+    background: rgba(0, 0, 0, 0.18);
+  }
+
+  /* ═══════════ Sidebar nav icons ═══════════ */
+  .nav-icon {
+    font-size: 13px;
+    opacity: 0.8;
+  }
+  .nav-item {
+    gap: 9px;
+  }
+
+  /* ═══════════ Empty state ═══════════ */
+  .empty-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-2);
+  }
+  .empty-cta {
+    margin-top: 14px;
+  }
+
+  /* ═══════════ Global toasts ═══════════ */
+  .toasts {
+    position: fixed;
+    bottom: 18px;
+    inset-inline-start: 50%;
+    transform: translateX(-50%);
+    z-index: 80;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    pointer-events: none;
+  }
+  .app-toast {
+    background: var(--bg-card);
+    color: var(--text);
+    border: 1px solid var(--stroke-strong);
+    border-inline-start: 3px solid var(--success);
+    border-radius: 10px;
+    padding: 9px 18px;
+    font-size: 12.5px;
+    box-shadow: var(--shadow);
+    white-space: nowrap;
+  }
+  .app-toast-err {
+    border-inline-start-color: var(--danger);
   }
 </style>

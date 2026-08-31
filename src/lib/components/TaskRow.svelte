@@ -1,23 +1,45 @@
 <script>
   import { t } from '$lib/i18n/i18n.svelte.js';
+  import { fmtBytes, fmtEta } from '$lib/fmt.js';
 
   let { task, onpause, onresume, onremove, onspeedlimit } = $props();
 
   const stateKey = $derived(`task.${task.state}`);
   const pct = $derived(task.progress ?? 0);
+  const pctText = $derived(`${Math.round(pct * 100)}%`);
   let showSpeed = $state(false);
   let speedVal = $state('');
 
-  function fmtBytes(n) {
-    if (n == null) return '—';
-    const u = ['B', 'KB', 'MB', 'GB'];
-    let i = 0;
-    while (n >= 1024 && i < 3) {
-      n /= 1024;
-      i++;
-    }
-    return `${n.toFixed(i ? 1 : 0)} ${u[i]}`;
+  // Estimated time remaining while actively downloading.
+  const eta = $derived(
+    task.state === 'downloading' && task.speed > 0 && task.total != null
+      ? fmtEta((task.total - task.downloaded) / task.speed)
+      : null,
+  );
+
+  // Best-effort file-type icon from category or extension.
+  const ICONS = {
+    Archives: '📦',
+    Videos: '🎬',
+    Music: '🎵',
+    Images: '🖼️',
+    Documents: '📄',
+    Docs: '📄',
+    Code: '💻',
+  };
+  function fileIcon(tk) {
+    if (tk.category && ICONS[tk.category]) return ICONS[tk.category];
+    const n = (tk.name || '').toLowerCase();
+    if (/\.(zip|rar|7z|tar|gz|xz|iso|dmg)$/.test(n)) return '📦';
+    if (/\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v)$/.test(n)) return '🎬';
+    if (/\.(mp3|flac|wav|aac|ogg|m4a|wma|opus)$/.test(n)) return '🎵';
+    if (/\.(png|jpe?g|gif|bmp|svg|webp|ico)$/.test(n)) return '🖼️';
+    if (/\.(pdf|docx?|txt|epub|mobi|odt|rtf|pptx|xlsx|csv|md)$/.test(n)) return '📄';
+    if (/\.(js|ts|py|rs|go|java|c|cpp|h|css|html|json|xml|ya?ml|toml|sh)$/.test(n)) return '💻';
+    if (/\.(exe|msi|apk|bat)$/.test(n)) return '⚙️';
+    return '📥';
   }
+  const icon = $derived(fileIcon(task));
 
   function applySpeed() {
     if (!speedVal.trim()) return;
@@ -34,14 +56,7 @@
 </script>
 
 <div class="row" class:done={task.state === 'done'} class:failed={task.state === 'failed'}>
-  <div class="icon" class:spinning={task.state === 'downloading'}>
-    {#if task.state === 'downloading'}⟳
-    {:else if task.state === 'done'}✓
-    {:else if task.state === 'paused'}⏸
-    {:else if task.state === 'failed'}✕
-    {:else if task.state === 'queued'}⏳
-    {:else}…{/if}
-  </div>
+  <div class="icon" class:downloading={task.state === 'downloading'}>{icon}</div>
 
   <div class="body">
     <div class="top">
@@ -54,9 +69,12 @@
           class="state"
           class:accent={task.state === 'downloading'}
           class:err={task.state === 'failed'}
+          class:ok={task.state === 'done'}
         >
+          <span class="state-dot" aria-hidden="true"></span>
           {t(stateKey)}
         </span>
+        <span class="pct-badge" title={pctText}>{pctText}</span>
       </div>
     </div>
 
@@ -72,6 +90,7 @@
         class="fill"
         style:width={`${pct * 100}%`}
         class:indeterminate={task.total == null && task.state === 'downloading'}
+        class:downloading-bar={task.state === 'downloading'}
         class:done-bar={task.state === 'done'}
         class:fail-bar={task.state === 'failed'}
       ></div>
@@ -84,6 +103,10 @@
       {#if task.state === 'downloading' && task.speed > 0}
         <span class="sep">·</span>
         <span class="speed">{fmtBytes(task.speed)}/s</span>
+      {/if}
+      {#if eta}
+        <span class="sep">·</span>
+        <span class="eta" title={t('task.eta')}>⏱ {eta}</span>
       {/if}
       {#if task.speed_limit > 0}
         <span class="sep">·</span>
@@ -179,14 +202,17 @@
     background: color-mix(in srgb, var(--danger) 12%, var(--bg-hover));
     color: var(--danger);
   }
-  .spinning {
-    animation: spin 1.2s linear infinite;
-    color: var(--accent);
+  .icon.downloading {
     background: var(--accent-glow);
+    animation: pulse 1.6s ease-in-out infinite;
   }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
+  @keyframes pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 var(--accent-glow);
+    }
+    50% {
+      box-shadow: 0 0 0 6px transparent;
     }
   }
 
@@ -224,20 +250,56 @@
     border: 1px solid var(--stroke-strong);
   }
   .state {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     font-size: 11px;
     color: var(--text-3);
     font-weight: 500;
   }
+  .state-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.8;
+  }
   .state.accent {
     color: var(--accent);
+  }
+  .state.accent .state-dot {
+    animation: blink 1.2s ease-in-out infinite;
+  }
+  .state.ok {
+    color: var(--success);
   }
   .state.err {
     color: var(--danger);
   }
+  @keyframes blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.25;
+    }
+  }
+  .pct-badge {
+    font-size: 10.5px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-2);
+    background: var(--bg-hover);
+    border: 1px solid var(--stroke);
+    border-radius: 6px;
+    padding: 1px 7px;
+    direction: ltr;
+  }
 
   /* ═══════════ Progress bar ═══════════ */
   .bar {
-    height: 5px;
+    height: 7px;
     border-radius: 4px;
     background: var(--bg-hover);
     margin: 8px 0 6px;
@@ -249,6 +311,21 @@
     background: linear-gradient(90deg, var(--accent-dim), var(--accent), var(--accent-strong));
     transition: width 0.35s ease;
     box-shadow: 0 0 6px var(--accent-glow);
+  }
+  .fill.downloading-bar {
+    background-image: repeating-linear-gradient(
+        -55deg,
+        transparent 0 8px,
+        rgba(255, 255, 255, 0.13) 8px 16px
+      ),
+      linear-gradient(90deg, var(--accent-dim), var(--accent), var(--accent-strong));
+    background-size: 28px 100%, 100% 100%;
+    animation: stripes 0.9s linear infinite;
+  }
+  @keyframes stripes {
+    to {
+      background-position-x: 28px, 0;
+    }
   }
   .done-bar {
     background: var(--success);
@@ -282,6 +359,10 @@
   .speed {
     color: var(--accent);
     font-weight: 600;
+  }
+  .eta {
+    color: var(--text-2);
+    font-variant-numeric: tabular-nums;
   }
   .limit-badge {
     color: var(--purple);

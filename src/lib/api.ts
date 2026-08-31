@@ -21,6 +21,13 @@ export interface AppConfig {
   proxy_url: string;
 }
 
+export interface DownloadStats {
+  active: number;
+  active_speed: number;
+  total: number;
+  completed: number;
+}
+
 export interface HistoryEntry {
   id: number;
   url: string;
@@ -98,6 +105,7 @@ export const api = {
   resume: (id: number) => invoke<void>('resume_download', { id }),
   remove: (id: number) => invoke<void>('remove_download', { id }),
   list: () => invoke<Task[]>('list_downloads'),
+  getStats: () => invoke<DownloadStats>('get_downloads_stats'),
   setSpeedLimit: (bytesPerSec: number) => invoke<void>('set_speed_limit', { bytesPerSec }),
   setTaskSpeedLimit: (id: number, bytesPerSec: number) =>
     invoke<void>('set_task_speed_limit', { id, bytesPerSec }),

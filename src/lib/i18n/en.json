@@ -20,7 +20,18 @@
     "cookiesPlaceholder": "Cookies — sessionid=...; token=...",
     "username": "Username (Basic Auth)",
     "password": "Password",
-    "proxyPlaceholder": "Per-download proxy — socks5://127.0.0.1:1080 (empty = default)"
+    "proxyPlaceholder": "Per-download proxy — socks5://127.0.0.1:1080 (empty = default)",
+    "searchPlaceholder": "Search downloads…",
+    "addedToast": "✓ Download added",
+    "removedToast": "Removed",
+    "addFailed": "Failed to add download"
+  },
+  "stats": {
+    "all": "All",
+    "active": "Active",
+    "speed": "Total speed",
+    "queued": "Waiting",
+    "done": "Completed"
   },
   "dup": {
     "title": "This download already exists",
@@ -95,7 +106,9 @@
   "empty": {
     "noDownloads": "No downloads yet",
     "noHistory": "History is empty",
-    "hint": "Click \"New Download\" to get started"
+    "hint": "Paste a link or click below — IDIN does the rest",
+    "cta": "⬇ Add your first download",
+    "noResults": "Nothing matches your search"
   },
   "browserSetup": {
     "title": "Browser Integration",

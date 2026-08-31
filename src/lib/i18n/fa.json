@@ -20,7 +20,18 @@
     "cookiesPlaceholder": "کوکی‌ها — sessionid=...; token=...",
     "username": "نام کاربری (Basic Auth)",
     "password": "رمز عبور",
-    "proxyPlaceholder": "پروکسی اختصاصی — socks5://127.0.0.1:1080 (خالی = پیش‌فرض)"
+    "proxyPlaceholder": "پروکسی اختصاصی — socks5://127.0.0.1:1080 (خالی = پیش‌فرض)",
+    "searchPlaceholder": "جستجوی دانلودها…",
+    "addedToast": "✓ دانلود اضافه شد",
+    "removedToast": "حذف شد",
+    "addFailed": "افزودن دانلود ناموفق بود"
+  },
+  "stats": {
+    "all": "همه",
+    "active": "فعال",
+    "speed": "سرعت کل",
+    "queued": "در انتظار",
+    "done": "تمام‌شده"
   },
   "dup": {
     "title": "این دانلود از قبل وجود دارد",
@@ -95,7 +106,9 @@
   "empty": {
     "noDownloads": "دانلودی وجود ندارد",
     "noHistory": "تاریخچه خالی است",
-    "hint": "روی «دانلود جدید» کلیک کنید"
+    "hint": "لینک را بچسبانید یا کلیک کنید و IDIN بقیه‌اش انجام می‌دهد",
+    "cta": "⬇ افزودن اولین دانلود",
+    "noResults": "چیزی مطابق جستجو پیدا نشد"
   },
   "browserSetup": {
     "title": "اتصال مرورگر",
