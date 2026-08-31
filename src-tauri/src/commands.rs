@@ -453,10 +453,7 @@ pub(crate) fn dirs_config_dir() -> PathBuf {
 /// (`%APPDATA%\com.hatnux.idin`) while every save went to `%APPDATA%\IDIN`.
 /// Copy any files still living in the legacy dir into the canonical one so
 /// users don't lose settings/history on upgrade.
-pub(crate) fn migrate_legacy_config(
-    old_dir: Option<&std::path::Path>,
-    new_dir: &std::path::Path,
-) {
+pub(crate) fn migrate_legacy_config(old_dir: Option<&std::path::Path>, new_dir: &std::path::Path) {
     let Some(old_dir) = old_dir else { return };
     if old_dir == new_dir {
         return;
