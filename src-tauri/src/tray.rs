@@ -61,6 +61,56 @@ pub fn show_main_window(app: &AppHandle) {
     }
 }
 
+/// Live tray tooltip: shows active download count + aggregate speed,
+/// e.g. `IDIN — 2 active · 1.4 MB/s`. Polls every 2s; writes only on change.
+pub fn start_tooltip_updater(app: &AppHandle) {
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        let mut last = String::new();
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            let (active, speed) = {
+                let Some(state) = handle.try_state::<crate::commands::EngineState>() else {
+                    continue;
+                };
+                let mut speed = 0u64;
+                let active = state
+                    .0
+                    .list()
+                    .iter()
+                    .filter(|t| {
+                        if t.state == crate::engine::task::TaskState::Downloading {
+                            speed += t.last_speed;
+                            true
+                        } else {
+                            false
+                        }
+                    })
+                    .count();
+                (active, speed)
+            };
+            let tip = if active > 0 {
+                let mb = speed as f64 / (1024.0 * 1024.0);
+                let spd = if mb >= 1.0 {
+                    format!("{mb:.1} MB/s")
+                } else {
+                    format!("{:.0} KB/s", speed as f64 / 1024.0)
+                };
+                format!("IDIN — {active} active · {spd}")
+            } else {
+                "IDIN — Download Manager".to_string()
+            };
+            if tip != last {
+                if let Some(tray) = handle.tray_by_id("idin-tray") {
+                    if tray.set_tooltip(Some(tip.clone())).is_ok() {
+                        last = tip;
+                    }
+                }
+            }
+        }
+    });
+}
+
 /// Intercept window close: if `close_to_tray` is ON, hide the window instead of quitting.
 ///
 /// This is called once during app setup. We clone per-iteration to satisfy borrow rules.
@@ -79,19 +129,15 @@ pub fn install_close_to_tray(app: &tauri::App) {
     }
 
     // We need to intercept CloseRequested on ALL webview windows.
-    // Clone handle + window per-iteration to satisfy Rust's move-in-closure rules.
+    // Clone window per-iteration to satisfy Rust's move-in-closure rules.
     for window in app.webview_windows().values() {
-        let handle = app.handle().clone();
         let win = window.clone();
         let win2 = window.clone();
         win.on_window_event(move |event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = win2.hide();
-                // Update tray tooltip to reflect active downloads (optional enhancement).
-                if let Some(tray) = handle.tray_by_id("idin-tray") {
-                    let _ = tray.set_tooltip(Some("IDIN — running in background"));
-                }
+                // Tray tooltip is kept live by start_tooltip_updater().
             }
         });
     }

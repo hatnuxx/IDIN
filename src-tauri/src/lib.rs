@@ -62,6 +62,9 @@ pub fn run() {
             // Close-to-tray behavior: hide on X instead of quit.
             tray::install_close_to_tray(app);
 
+            // Live tray tooltip: active count + aggregate speed.
+            tray::start_tooltip_updater(app.handle());
+
             // Clipboard watcher: surface copied URLs to the UI.
             clipboard::start_clipboard_watcher(app.handle().clone());
 
