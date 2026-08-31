@@ -9,6 +9,7 @@
 //!   process that cannot read the user's file is rejected.
 //! - Only `http://` / `https://` URLs are accepted.
 
+use crate::config::SharedConfig;
 use crate::engine::Engine;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -59,7 +60,7 @@ fn is_valid_url(url: &str) -> bool {
         && !url.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 
-pub async fn serve(engine: Arc<Engine>) {
+pub async fn serve(engine: Arc<Engine>, config: Option<SharedConfig>) {
     let Some(expected_token) = ensure_api_token() else {
         log::error!("local API disabled: cannot create API token");
         return;
@@ -78,6 +79,7 @@ pub async fn serve(engine: Arc<Engine>) {
             break;
         };
         let engine = engine.clone();
+        let config = config.clone();
         let expected_token = expected_token.clone();
         tokio::spawn(async move {
             let mut buf = vec![0u8; MAX_MSG_LEN + 1];
@@ -111,20 +113,18 @@ pub async fn serve(engine: Arc<Engine>) {
             let url = url.to_string();
             let eng = engine.clone();
             tokio::spawn(async move {
-                // Extension doesn't have access to Tauri config state,
-                // so pass None — downloads go to the default directory.
-                if let Err(e) = eng.add(url, default_dir(), 8, None, None, None, None).await {
+                // Pass the app config so engine.add() applies download_dir +
+                // auto-categorization exactly like manual UI downloads.
+                // Duplicate handling uses the safe default (auto-rename).
+                if let Err(e) = eng
+                    .add(url, PathBuf::new(), 8, config, None, None, None)
+                    .await
+                {
                     log::warn!("extension download failed: {e}");
                 }
             });
         });
     }
-}
-
-fn default_dir() -> std::path::PathBuf {
-    std::env::var_os("USERPROFILE")
-        .map(|h| std::path::PathBuf::from(h).join("Downloads"))
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
 }
 
 #[cfg(test)]

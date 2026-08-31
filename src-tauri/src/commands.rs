@@ -439,10 +439,38 @@ fn dirs_download_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
-fn dirs_config_dir() -> PathBuf {
+/// Canonical per-user config dir: `%APPDATA%\IDIN`.
+/// Every read AND write must go through this so settings survive restarts —
+/// older builds loaded from Tauri's `app_config_dir()` while saving here,
+/// which silently dropped all settings on every launch.
+pub(crate) fn dirs_config_dir() -> PathBuf {
     std::env::var_os("APPDATA")
         .map(|h| PathBuf::from(h).join("IDIN"))
         .unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// One-time migration: old builds read config from Tauri's `app_config_dir()`
+/// (`%APPDATA%\com.hatnux.idin`) while every save went to `%APPDATA%\IDIN`.
+/// Copy any files still living in the legacy dir into the canonical one so
+/// users don't lose settings/history on upgrade.
+pub(crate) fn migrate_legacy_config(
+    old_dir: Option<&std::path::Path>,
+    new_dir: &std::path::Path,
+) {
+    let Some(old_dir) = old_dir else { return };
+    if old_dir == new_dir {
+        return;
+    }
+    for name in ["config.json", "downloads.json", "history.json"] {
+        let src = old_dir.join(name);
+        let dst = new_dir.join(name);
+        if src.exists() && !dst.exists() {
+            if let Some(parent) = dst.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::copy(&src, &dst);
+        }
+    }
 }
 
 // ───────────────────────────── Engine event forwarder ─────────────────────────────

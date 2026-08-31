@@ -23,11 +23,18 @@ pub fn run() {
             }
             commands::setup_engine(app)?;
 
-            // Load config from app config dir.
-            let config_dir = app
+            // ── Config dir: ONE canonical location for every read/write ──
+            // `%APPDATA%\IDIN` — the same dir commands::dirs_config_dir()
+            // writes to. (Old builds loaded from Tauri's app_config_dir(),
+            // so saves never came back after restart; fixed here.)
+            let config_dir = commands::dirs_config_dir();
+            let legacy_dir = app
                 .path()
                 .app_config_dir()
-                .unwrap_or_else(|_| std::path::PathBuf::from("."));
+                .ok()
+                .filter(|p| p != &config_dir);
+            // Copy config/history/state from the legacy dir (first run after fix).
+            commands::migrate_legacy_config(legacy_dir.as_deref(), &config_dir);
             let shared_cfg = config::load_or_create(&config_dir);
             app.manage(config::ConfigState(shared_cfg.clone()));
 
@@ -64,8 +71,9 @@ pub fn run() {
                 .map(|s| s.0.clone());
             let handle = app.handle().clone();
             if let Some(engine) = engine {
+                let api_cfg = shared_cfg.clone();
                 tauri::async_runtime::spawn(async move {
-                    local_api::serve(engine).await;
+                    local_api::serve(engine, Some(api_cfg)).await;
                     let _ = handle;
                 });
             }
@@ -119,10 +127,8 @@ pub fn run() {
             {
                 let cfg = shared_cfg.clone();
                 let handle = app.handle().clone();
-                let config_dir = app
-                    .path()
-                    .app_config_dir()
-                    .unwrap_or_else(|_| std::path::PathBuf::from("."));
+                // Same canonical config dir as above (persist cleared action).
+                let config_dir = config_dir.clone();
                 tauri::async_runtime::spawn(async move {
                     let engine = handle
                         .try_state::<commands::EngineState>()
